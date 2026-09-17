@@ -56,6 +56,20 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://frontend:3000"]
 
+    # File upload
+    MAX_FILE_SIZE: int = Field(
+        default=20 * 1024 * 1024,
+        description="Maximum file size in bytes (default 20MB)",
+    )
+    ALLOWED_MIME_TYPES: list[str] = Field(
+        default=["application/pdf", "image/jpeg", "image/png", "image/tiff"],
+        description="Allowed MIME types for file upload",
+    )
+    STORAGE_ROOT: str = Field(
+        default="/app/storage",
+        description="Root directory for file storage",
+    )
+
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
