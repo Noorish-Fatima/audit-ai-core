@@ -5,7 +5,7 @@ from fastapi.security import HTTPBearer
 from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.tier_config import settings
 from app.db.session import get_session
 from app.services.auth_service import AuthService
 from app.services.rate_limiter import login_rate_limit, add_rate_limit_headers

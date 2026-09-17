@@ -21,6 +21,7 @@ services:
     - ENVIRONMENT=production
     - CORS_ORIGINS=["http://localhost:3000","http://frontend:3000"]
     - SECRET_KEY=${SECRET_KEY}
+    - TIER=${TIER}
     healthcheck:
       interval: 30s
       retries: 3

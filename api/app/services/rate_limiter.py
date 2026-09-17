@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 from fastapi import HTTPException, status, Request
 import redis.asyncio as redis
 
-from app.config import settings
+from app.tier_config import settings
 
 
 class RateLimiter:

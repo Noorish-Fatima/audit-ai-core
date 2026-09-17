@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str = Field(
-        default="dev-secret-key-change-in-production",
+        default="604554f1d758901b77c9056466468c194167d0aedc952b5af6fcf1e77adfcf65",
         description="Secret key for JWT tokens",
     )
     ALGORITHM: str = "HS256"

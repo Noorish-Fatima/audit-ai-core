@@ -9,7 +9,7 @@ from passlib.context import CryptContext
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.tier_config import settings
 from app.models.user import User, RefreshToken, UserRole
 
 

@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from app.db.session import Base
-from app.config import settings
+from app.tier_config import settings
 
 config = context.config
 

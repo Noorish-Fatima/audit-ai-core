@@ -2,7 +2,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
+from app.config import Settings, settings
+from app.tier_config import feature_enabled, register_tier_routes
 from app.db.session import init_db, close_db
 
 
@@ -51,9 +52,37 @@ async def api_health_check():
     return {"status": "ok", "service": "api", "version": settings.APP_VERSION}
 
 
-from app.routers import documents, analysis, webhooks, auth  # noqa: E402
+# Core routers (always enabled)
+from app.routers import auth, documents  # noqa: E402
 
 app.include_router(auth.router, prefix=settings.API_PREFIX, tags=["auth"])
 app.include_router(documents.router, prefix=settings.API_PREFIX, tags=["documents"])
-app.include_router(analysis.router, prefix=settings.API_PREFIX, tags=["analysis"])
-app.include_router(webhooks.router, prefix=settings.API_PREFIX, tags=["webhooks"])
+
+# Feature-gated routers
+if feature_enabled("rules_engine"):
+    from app.routers import rules  # noqa: E402
+    app.include_router(rules.router, prefix=settings.API_PREFIX, tags=["rules"])
+
+if feature_enabled("nl_query"):
+    from app.routers import nl_query  # noqa: E402
+    app.include_router(nl_query.router, prefix=settings.API_PREFIX, tags=["nl-query"])
+
+if feature_enabled("fraud_detection"):
+    from app.routers import fraud  # noqa: E402
+    app.include_router(fraud.router, prefix=settings.API_PREFIX, tags=["fraud"])
+
+if feature_enabled("three_way_match"):
+    from app.routers import three_way_match  # noqa: E402
+    app.include_router(three_way_match.router, prefix=settings.API_PREFIX, tags=["three-way-match"])
+
+if feature_enabled("approval_routing"):
+    from app.routers import approval_routing  # noqa: E402
+    app.include_router(approval_routing.router, prefix=settings.API_PREFIX, tags=["approval-routing"])
+
+if feature_enabled("reporting"):
+    from app.routers import reporting  # noqa: E402
+    app.include_router(reporting.router, prefix=settings.API_PREFIX, tags=["reporting"])
+
+# Tier info endpoint (always available)
+from app.tier_config.tiers import register_tier_routes
+register_tier_routes(app)
