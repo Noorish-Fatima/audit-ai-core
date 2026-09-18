@@ -42,3 +42,9 @@ httpx==0.27.2
 # Type checking
 mypy==1.11.2
 types-requests==2.33.0.20260906
+
+# OCR dependencies
+pypdfium2==5.13.0
+pillow==10.4.0
+pytesseract==0.3.10
+opencv-python-headless==4.10.0.84

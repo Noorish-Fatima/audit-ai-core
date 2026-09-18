@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import create_engine
 
 from app.tier_config import settings
 
@@ -8,8 +9,18 @@ class Base(DeclarativeBase):
     pass
 
 
+# Async engine for API
 engine = create_async_engine(
     settings.DATABASE_URL,
+    echo=settings.DATABASE_ECHO,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+)
+
+# Sync engine for Celery workers
+sync_engine = create_engine(
+    settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://"),
     echo=settings.DATABASE_ECHO,
     pool_pre_ping=True,
     pool_size=5,

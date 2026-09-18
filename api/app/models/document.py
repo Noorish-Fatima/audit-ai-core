@@ -1,6 +1,6 @@
 import enum
 from typing import Optional, List
-from sqlalchemy import String, ForeignKey, Integer, Index, Enum as SQLEnum
+from sqlalchemy import String, ForeignKey, Integer, Index, Enum as SQLEnum, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,6 +48,15 @@ class Document(Base, UUIDMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    raw_ocr_text: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    normalized_image_paths: Mapped[Optional[List[str]]] = mapped_column(
+        JSONB,
+        nullable=True,
+        default=list,
     )
 
     sessions: Mapped[List["DocumentSession"]] = relationship(

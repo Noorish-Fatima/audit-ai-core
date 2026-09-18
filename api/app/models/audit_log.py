@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import String, ForeignKey, DateTime, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -38,6 +38,7 @@ class AuditLog(Base, UUIDMixin):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (

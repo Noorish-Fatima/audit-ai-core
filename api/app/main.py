@@ -1,10 +1,14 @@
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import Settings, settings
 from app.tier_config import feature_enabled, register_tier_routes
 from app.db.session import init_db, close_db
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -30,6 +34,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler - never expose stack traces to clients."""
+    logger.exception(f"Unhandled exception on {request.method} {request.url}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 
 @app.get("/health", tags=["health"])

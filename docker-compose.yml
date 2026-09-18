@@ -40,6 +40,7 @@ services:
     - ./api/app:/app/app
     - ./api/alembic:/app/alembic
     - ./api/alembic.ini:/app/alembic.ini
+    - storage_data:/app/storage
   db:
     container_name: audit-ai-db
     environment:
@@ -121,6 +122,7 @@ services:
     - CELERY_RESULT_BACKEND=redis://redis:6379/2
     - DEBUG=true
     - ENVIRONMENT=production
+    - TIER=${TIER}
     healthcheck:
       interval: 30s
       retries: 3
@@ -136,7 +138,9 @@ services:
     volumes:
     - ./api/app:/app/app
     - ./worker:/app/worker
+    - storage_data:/app/storage
 version: '3.8'
 volumes:
   postgres_data: null
   redis_data: null
+  storage_data: null

@@ -1,6 +1,3 @@
-import os
-import uuid
-import shutil
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -9,6 +6,9 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
+import uuid
+import os
+import shutil
 
 from app.tier_config import settings
 from app.db.session import get_session
@@ -65,7 +65,7 @@ def get_file_extension(mime_type: str) -> str:
 
 
 async def enqueue_processing_chain(document_id: str):
-    """Enqueue the Celery processing chain for a document."""
+    """Enqueue the Celery OCR normalization task for a document."""
     try:
         # Use Celery's send_task to avoid import issues between API and worker containers
         from celery import Celery
@@ -75,7 +75,7 @@ async def enqueue_processing_chain(document_id: str):
             broker=settings.CELERY_BROKER_URL,
             backend=settings.CELERY_RESULT_BACKEND,
         )
-        celery_app.send_task("process_document", args=[document_id])
+        celery_app.send_task("ocr_normalize", args=[document_id])
     except Exception:
         import logging
         logging.getLogger(__name__).exception(f"Failed to enqueue processing for document {document_id}")
@@ -146,7 +146,7 @@ async def upload_document(
 
 @router.get("/{document_id}/session")
 async def get_document_session(
-    document_id: str,
+    document_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -173,7 +173,7 @@ async def get_document_session(
 
 @router.get("/{document_id}")
 async def get_document(
-    document_id: str,
+    document_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -206,6 +206,8 @@ async def get_document(
         "uploaded_by": document.uploaded_by,
         "created_at": document.created_at.isoformat() if document.created_at else None,
         "updated_at": document.updated_at.isoformat() if document.updated_at else None,
+        "raw_ocr_text": document.raw_ocr_text,
+        "normalized_image_paths": document.normalized_image_paths,
         "extracted_fields": [
             {
                 "id": ef.id,
@@ -302,7 +304,7 @@ async def list_documents(
 
 @router.get("/{document_id}/file")
 async def serve_document_file(
-    document_id: str,
+    document_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
