@@ -3,12 +3,29 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import Settings, settings
 from app.tier_config import feature_enabled, register_tier_routes
 from app.db.session import init_db, close_db
 
 logger = logging.getLogger(__name__)
+
+
+class ExceptionMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to catch all unhandled exceptions and return a clean 500 response.
+    This acts as a final safety net beyond @app.exception_handler.
+    """
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:
+            logger.exception(f"Unhandled exception caught by middleware: {exc}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"},
+            )
 
 
 @asynccontextmanager
@@ -35,6 +52,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Final safety net middleware
+app.add_middleware(ExceptionMiddleware)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -72,30 +91,15 @@ from app.routers import auth, documents  # noqa: E402
 app.include_router(auth.router, prefix=settings.API_PREFIX, tags=["auth"])
 app.include_router(documents.router, prefix=settings.API_PREFIX, tags=["documents"])
 
-# Feature-gated routers
-if feature_enabled("rules_engine"):
-    from app.routers import rules  # noqa: E402
-    app.include_router(rules.router, prefix=settings.API_PREFIX, tags=["rules"])
+# Feature-gated routers (now included and gated via dependencies in the routers themselves)
+from app.routers import rules, nl_query, fraud, three_way_match, approval_routing, reporting  # noqa: E402
 
-if feature_enabled("nl_query"):
-    from app.routers import nl_query  # noqa: E402
-    app.include_router(nl_query.router, prefix=settings.API_PREFIX, tags=["nl-query"])
-
-if feature_enabled("fraud_detection"):
-    from app.routers import fraud  # noqa: E402
-    app.include_router(fraud.router, prefix=settings.API_PREFIX, tags=["fraud"])
-
-if feature_enabled("three_way_match"):
-    from app.routers import three_way_match  # noqa: E402
-    app.include_router(three_way_match.router, prefix=settings.API_PREFIX, tags=["three-way-match"])
-
-if feature_enabled("approval_routing"):
-    from app.routers import approval_routing  # noqa: E402
-    app.include_router(approval_routing.router, prefix=settings.API_PREFIX, tags=["approval-routing"])
-
-if feature_enabled("reporting"):
-    from app.routers import reporting  # noqa: E402
-    app.include_router(reporting.router, prefix=settings.API_PREFIX, tags=["reporting"])
+app.include_router(rules.router, prefix=settings.API_PREFIX, tags=["rules"])
+app.include_router(nl_query.router, prefix=settings.API_PREFIX, tags=["nl-query"])
+app.include_router(fraud.router, prefix=settings.API_PREFIX, tags=["fraud"])
+app.include_router(three_way_match.router, prefix=settings.API_PREFIX, tags=["three-way-match"])
+app.include_router(approval_routing.router, prefix=settings.API_PREFIX, tags=["approval-routing"])
+app.include_router(reporting.router, prefix=settings.API_PREFIX, tags=["reporting"])
 
 # Tier info endpoint (always available)
 from app.tier_config.tiers import register_tier_routes

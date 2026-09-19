@@ -102,6 +102,7 @@ class DocumentSession(Base, UUIDMixin, TimestampMixin):
     current_stage: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
+        index=True,
     )
     progress_percent: Mapped[int] = mapped_column(
         Integer,

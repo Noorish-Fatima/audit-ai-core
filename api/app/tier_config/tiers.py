@@ -1,10 +1,12 @@
-import os
 from typing import Dict, Any
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi.responses import JSONResponse
+
+from app.config import settings
 
 VALID_TIERS = {"basic", "standard", "premium"}
 
-TIER = os.getenv("TIER").lower()
+TIER = settings.TIER.lower()
 if TIER not in VALID_TIERS:
     raise ValueError(
         f"Invalid TIER: '{TIER}'. Must be one of: {', '.join(sorted(VALID_TIERS))}"
@@ -41,6 +43,20 @@ FEATURES: Dict[str, Dict[str, bool]] = {
 def feature_enabled(name: str) -> bool:
     """Check if a feature is enabled for the current tier."""
     return FEATURES[TIER].get(name, False)
+
+
+def verify_feature(feature_name: str):
+    """
+    FastAPI dependency to verify if a feature is enabled.
+    Raises HTTPException if the feature is not available in the current tier.
+    """
+    def dependency():
+        if not feature_enabled(feature_name):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Feature '{feature_name}' is not available in the current tier ({TIER}). Please upgrade your plan."
+            )
+    return dependency
 
 
 def get_tier_info() -> Dict[str, Any]:

@@ -212,9 +212,9 @@ async def get_document(
             {
                 "id": ef.id,
                 "field_name": ef.field_name,
-                "value": ef.value,
-                "confidence": ef.confidence,
-                "bbox": ef.bbox,
+                "value": getattr(ef, "field_value", getattr(ef, "value", None)),
+                "confidence": getattr(ef, "confidence_score", getattr(ef, "confidence", 0.0)),
+                "bbox": getattr(ef, "bbox", None),
             }
             for ef in document.extracted_fields
         ],

@@ -70,6 +70,22 @@ class Settings(BaseSettings):
         description="Root directory for file storage",
     )
 
+    # LLM APIs
+    GROQ_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+    HF_TOKEN: str = ""
+    HF_MODEL: str = "meta-llama/Llama-3.1-8B-Instruct"
+    GEMINI_MODEL: str = "gemini-3.8-flash"
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+
+    # Frontend
+    NEXT_PUBLIC_API_URL: str = "http://localhost:8000"
+
+    # Tier
+    TIER: str = "basic"
+
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:

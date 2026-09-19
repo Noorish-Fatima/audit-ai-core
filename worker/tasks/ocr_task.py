@@ -10,6 +10,7 @@ from PIL import Image, ImageOps, ImageEnhance, ExifTags
 import cv2
 import pytesseract
 import pypdfium2 as pdfium
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import sync_engine
@@ -228,8 +229,9 @@ def run_ocr(image: Image.Image) -> str:
         return ""
 
 
-def _update_session_atomic(db, document_id: str, stage: str, progress: int, message: str, document_status: DocumentStatus):
+def _update_session_atomic(db: Session, document_id: str, stage: str, progress: int, message: str, document_status: DocumentStatus):
     """Atomically update session stage + document status in single transaction."""
+
     from datetime import datetime
     from sqlalchemy import select
     from sqlalchemy.orm.attributes import flag_modified
@@ -270,8 +272,9 @@ def _update_session_atomic(db, document_id: str, stage: str, progress: int, mess
     db.commit()
 
 
-def _update_progress(db, document_id: str, stage: str, progress: int, message: str = ""):
+def _update_progress(db: Session, document_id: str, stage: str, progress: int, message: str = ""):
     """Update document session progress (non-atomic, for intermediate updates)."""
+
     from datetime import datetime
     from sqlalchemy import select
     from app.models.document import DocumentSession
@@ -391,8 +394,15 @@ def ocr_normalize(self, document_id: str) -> dict:
         # Rasterize PDF or load image
         if mime_type == "application/pdf":
             _update_progress(db, document_id, "ocr_processing", 10, "Rasterizing PDF")
-            images = rasterize_pdf(Path(document.storage_path))
+            try:
+                images = rasterize_pdf(Path(document.storage_path))
+            except Exception as e:
+                logger.exception(f"Failed to rasterize PDF for document {document_id}: {e}")
+                flag_document(document_id, "corrupted_pdf", e)
+                _update_session_atomic(db, document_id, "failed", 0, f"Corrupted PDF: {str(e)[:200]}", DocumentStatus.flagged)
+                return {"status": "failed", "document_id": document_id, "error": "Corrupted PDF file"}
         elif mime_type.startswith("image/"):
+
             _update_progress(db, document_id, "ocr_processing", 10, "Loading image")
             images = [load_image(Path(document.storage_path))]
         else:
