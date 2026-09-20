@@ -1,7 +1,9 @@
 import enum
-from sqlalchemy import String, ForeignKey, Float, Index
+from sqlalchemy import String, ForeignKey, Float, Index, DateTime
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from datetime import datetime
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
@@ -11,7 +13,7 @@ class DuplicateMatchType(str, enum.Enum):
     fuzzy_match = "fuzzy_match"
 
 
-class DuplicateFlag(Base, UUIDMixin, TimestampMixin):
+class DuplicateFlag(Base, UUIDMixin):
     __tablename__ = "duplicate_flags"
 
     document_id: Mapped[str] = mapped_column(
@@ -35,13 +37,21 @@ class DuplicateFlag(Base, UUIDMixin, TimestampMixin):
         nullable=False,
     )
 
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
     document: Mapped["Document"] = relationship(
         foreign_keys=[document_id],
-        back_populates="duplicate_flags",
     )
     duplicate_of: Mapped["Document"] = relationship(
         foreign_keys=[duplicate_of_document_id],
     )
+
+
+
 
     __table_args__ = (
         Index("ix_duplicate_flags_doc_duplicate", "document_id", "duplicate_of_document_id"),
