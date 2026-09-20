@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+audit-ai-build-prompts.md
+stuff.txt
+mock_invoice_1781215849743.png
+test_invoice4.png
