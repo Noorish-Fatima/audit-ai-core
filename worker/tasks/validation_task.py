@@ -7,7 +7,9 @@ from celery import shared_task
 from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.tier_config.tiers import feature_enabled
+from app.services.rules_engine import RuleEvaluator
+from app.models.rule import Rule, RuleViolation, RuleSeverity
 from app.db.session import SyncSessionLocal
 from app.models.document import Document, DocumentSession, DocumentStatus
 from app.models.vendor import Vendor
@@ -251,6 +253,116 @@ def check_duplicates(self, document_id: str):
         except Exception as e:
             session.rollback()
             logger.exception(f"Error checking duplicates for {document_id}: {e}")
+            raise self.retry(exc=e)
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    retry_backoff=True
+)
+def evaluate_rules(self, document_id: str):
+    """
+    Deterministic Rules Engine Task:
+    - Evaluates all active rules against the document and vendor.
+    - Creates RuleViolation records for matches.
+    - Overrides status to 'review' if any critical violation occurs.
+    """
+    logger.info(f"Evaluating rules for document {document_id}")
+
+    if not feature_enabled("rules_engine"):
+        logger.info(f"Rules engine disabled for document {document_id}, skipping.")
+        return
+
+    with SyncSessionLocal() as session:
+        try:
+            # 1. Setup Data
+            doc = session.get(Document, document_id)
+            if not doc:
+                logger.error(f"Document {document_id} not found")
+                return
+
+            # Flatten extracted fields into a dict
+            extracted_fields = session.execute(
+                select(ExtractedField).where(ExtractedField.document_id == document_id)
+            ).scalars().all()
+            data_map = {ef.field_name: ef.field_value for ef in extracted_fields}
+
+            # Find matched vendor
+            vendor_name, _ = get_field_value(session, document_id, "vendor_name")
+            vendor = None
+            if vendor_name:
+                vendor = session.execute(
+                    select(Vendor).where(Vendor.canonical_name == vendor_name)
+                ).scalars().first() # simplified lookup; normally we'd use the matched vendor from previous task
+
+            # 2. Evaluate Rules
+            active_rules = session.execute(select(Rule).where(Rule.active == True)).scalars().all()
+            violations_created = 0
+            has_critical = False
+
+            for rule in active_rules:
+                if RuleEvaluator.evaluate(rule.condition, data_map, vendor):
+                    # Idempotency check: skip if a violation already exists for this
+                    # document_id + rule_id pair (same pattern as check_duplicates).
+                    existing_violation = session.execute(
+                        select(RuleViolation)
+                        .where(and_(
+                            RuleViolation.document_id == document_id,
+                            RuleViolation.rule_id == rule.id
+                        ))
+                    ).scalars().first()
+
+                    if existing_violation:
+                        logger.info(
+                            f"Violation already exists for document {document_id} "
+                            f"and rule {rule.id}; skipping re-insert."
+                        )
+                        continue
+
+                    violations_created += 1
+
+                    violation = RuleViolation(
+                        document_id=document_id,
+                        rule_id=rule.id,
+                        details={"field_values": data_map, "rule_name": rule.name}
+                    )
+                    session.add(violation)
+
+                    if rule.severity == RuleSeverity.critical:
+                        has_critical = True
+
+            # 3. Status and Session Update
+            if has_critical:
+                doc.status = DocumentStatus.review
+                logger.warning(f"Critical rule violation found for {document_id}. Forced to review.")
+
+            session_result = session.execute(
+                select(DocumentSession)
+                .where(DocumentSession.document_id == document_id)
+                .order_by(DocumentSession.updated_at.desc())
+            ).scalar_one_or_none()
+
+            if session_result:
+                session_result.current_stage = "rules_complete"
+                session_result.progress_percent = 75
+
+                history_entry = {
+                    "stage": "rules_complete",
+                    "progress": 75,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "message": f"Rules engine completed. {violations_created} violations found."
+                }
+                updated_history = list(session_result.stage_history)
+                updated_history.append(history_entry)
+                session_result.stage_history = updated_history
+
+            session.commit()
+            logger.info(f"Rules evaluation finished for {document_id}. Violations: {violations_created}")
+
+        except Exception as e:
+            session.rollback()
+            logger.exception(f"Error evaluating rules for {document_id}: {e}")
             raise self.retry(exc=e)
 
 @shared_task(

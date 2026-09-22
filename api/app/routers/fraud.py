@@ -4,7 +4,6 @@ from app.tier_config.tiers import verify_feature
 
 router = APIRouter(prefix="/fraud", tags=["fraud"])
 
-
 @router.get("/health", include_in_schema=False)
 async def fraud_health():
     return {"status": "ok", "service": "fraud"}

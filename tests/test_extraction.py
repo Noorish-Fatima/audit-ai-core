@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import json
 import uuid
 
-from app.schemas.extraction import ExtractedInvoiceFields, LineItem
-from app.agents.extraction_graph import (
+from api.app.schemas.extraction import ExtractedInvoiceFields, LineItem
+from api.app.agents.extraction_graph import (
     text_model_node,
     confidence_check_node,
     vision_model_node,

@@ -1,9 +1,9 @@
 import enum
+from datetime import datetime 
 from typing import Optional, List
-from sqlalchemy import String, ForeignKey, Boolean, Index
+from sqlalchemy import String, ForeignKey, Boolean, Index, func, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
 
@@ -57,8 +57,14 @@ class Rule(Base, UUIDMixin, TimestampMixin):
         return f"<Rule(id={self.id}, name={self.name}, severity={self.severity})>"
 
 
-class RuleViolation(Base, UUIDMixin, TimestampMixin):
+class RuleViolation(Base, UUIDMixin):
     __tablename__ = "rule_violations"
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
 
     document_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False),
