@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import List
-from sqlalchemy import String, ForeignKey, Numeric, DateTime, Index
+from sqlalchemy import String, ForeignKey, Numeric, DateTime, Index, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,7 +42,7 @@ class PurchaseOrder(Base, UUIDMixin, TimestampMixin):
         return f"<PurchaseOrder(id={self.id}, po_number={self.po_number}, amount={self.expected_amount})>"
 
 
-class GoodsReceipt(Base, UUIDMixin, TimestampMixin):
+class GoodsReceipt(Base, UUIDMixin):
     __tablename__ = "goods_receipts"
 
     po_id: Mapped[str] = mapped_column(
@@ -57,6 +57,11 @@ class GoodsReceipt(Base, UUIDMixin, TimestampMixin):
     )
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
         nullable=False,
     )
 

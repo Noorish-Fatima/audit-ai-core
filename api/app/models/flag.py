@@ -1,6 +1,5 @@
 import enum
-from sqlalchemy import String, ForeignKey, Float, Index, DateTime
-from sqlalchemy import func
+from sqlalchemy import String, ForeignKey, Float, Index, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
@@ -67,7 +66,7 @@ class FraudFlagType(str, enum.Enum):
     round_number_threshold = "round_number_threshold"
 
 
-class FraudFlag(Base, UUIDMixin, TimestampMixin):
+class FraudFlag(Base, UUIDMixin):
     __tablename__ = "fraud_flags"
 
     document_id: Mapped[str] = mapped_column(
@@ -87,6 +86,11 @@ class FraudFlag(Base, UUIDMixin, TimestampMixin):
     )
     details: Mapped[dict] = mapped_column(
         JSONB,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
         nullable=False,
     )
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Boolean, ForeignKey, DateTime, Index
+from sqlalchemy import String, Boolean, ForeignKey, DateTime, Index, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,7 +57,7 @@ class Vendor(Base, UUIDMixin, TimestampMixin):
         return f"<Vendor(id={self.id}, name={self.canonical_name}, approved={self.is_approved})>"
 
 
-class VendorBankHistory(Base, UUIDMixin, TimestampMixin):
+class VendorBankHistory(Base, UUIDMixin):
     __tablename__ = "vendor_bank_history"
 
     vendor_id: Mapped[str] = mapped_column(
@@ -82,6 +82,11 @@ class VendorBankHistory(Base, UUIDMixin, TimestampMixin):
         Boolean,
         nullable=False,
         default=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
 
     vendor: Mapped["Vendor"] = relationship(back_populates="bank_history")

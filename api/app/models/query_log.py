@@ -1,12 +1,13 @@
+from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, ForeignKey, Index
+from sqlalchemy import String, ForeignKey, Index, func, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDMixin
+from app.models.base import Base, UUIDMixin
 
 
-class NLQueryLog(Base, UUIDMixin, TimestampMixin):
+class NLQueryLog(Base, UUIDMixin):
     __tablename__ = "nl_query_log"
 
     user_id: Mapped[str] = mapped_column(
@@ -34,6 +35,11 @@ class NLQueryLog(Base, UUIDMixin, TimestampMixin):
     response_text: Mapped[Optional[str]] = mapped_column(
         String(5000),
         nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
 
     __table_args__ = (

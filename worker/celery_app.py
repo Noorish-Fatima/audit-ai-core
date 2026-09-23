@@ -17,11 +17,12 @@ celery_app = Celery(
         "worker.tasks.ocr_task",
         "worker.tasks.extraction_task",
         "worker.tasks.validation_task",
+        "worker.tasks.fraud_task",
     ],
 )
 
 # Explicitly import task modules to register @shared_task decorators
-from worker.tasks import document_tasks, analysis_tasks, ocr_task, extraction_task, validation_task  # noqa: F401
+from worker.tasks import document_tasks, analysis_tasks, ocr_task, extraction_task, validation_task, fraud_task  # noqa: F401
 
 celery_app.conf.update(
     task_serializer="json",
