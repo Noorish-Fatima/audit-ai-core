@@ -73,6 +73,9 @@ class ExtractedInvoiceFields(BaseModel):
     total_amount: Optional[Decimal] = Field(None, description="Total amount due")
     total_amount_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
+    po_reference: Optional[str] = Field(None, description="Purchase Order reference number")
+    po_reference_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
     line_items: List[LineItem] = Field(default_factory=list, description="Line items")
     line_items_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
@@ -121,6 +124,7 @@ class ExtractedInvoiceFields(BaseModel):
             "tax_amount": ("tax_amount", self.tax_amount_confidence, str(self.tax_amount) if self.tax_amount else None),
             "tax_rate": ("tax_rate", self.tax_rate_confidence, str(self.tax_rate) if self.tax_rate else None),
             "total_amount": ("total_amount", self.total_amount_confidence, str(self.total_amount) if self.total_amount else None),
+            "po_reference": ("po_reference", self.po_reference_confidence, self.po_reference),
             "line_items": ("line_items", self.line_items_confidence, self.line_items if self.line_items else None),
         }
 

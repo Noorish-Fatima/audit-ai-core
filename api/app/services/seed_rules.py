@@ -42,6 +42,25 @@ def seed_default_rules():
                 },
                 severity=RuleSeverity.medium,
                 active=True
+            ),
+            Rule(
+                name="three_way_match_tolerance",
+                description="Tolerance threshold for three-way match (invoice vs PO vs receipt)",
+                condition={"tolerance_percent": 2.0},
+                severity=RuleSeverity.medium,
+                active=True
+            ),
+            Rule(
+                name="three_way_match_tolerance_exceeded",
+                description="Three-way match tolerance exceeded: invoice amount differs from PO or receipt beyond allowed threshold",
+                condition={
+                    "and": [
+                        {"field": "invoice.po_reference", "operator": "not_equals", "value": None},
+                        {"field": "invoice.total_amount", "operator": "gt", "value": 0}
+                    ]
+                },
+                severity=RuleSeverity.high,
+                active=True
             )
         ]
         session.add_all(default_rules)

@@ -92,7 +92,7 @@ app.include_router(auth.router, prefix=settings.API_PREFIX, tags=["auth"])
 app.include_router(documents.router, prefix=settings.API_PREFIX, tags=["documents"])
 
 # Feature-gated routers (now included and gated via dependencies in the routers themselves)
-from app.routers import rules, nl_query, fraud, three_way_match, approval_routing, reporting  # noqa: E402
+from app.routers import rules, nl_query, fraud, three_way_match, approval_routing, reporting, purchase_orders  # noqa: E402
 
 app.include_router(rules.router, prefix=settings.API_PREFIX, tags=["rules"])
 app.include_router(nl_query.router, prefix=settings.API_PREFIX, tags=["nl-query"])
@@ -100,6 +100,7 @@ app.include_router(fraud.router, prefix=settings.API_PREFIX, tags=["fraud"])
 app.include_router(three_way_match.router, prefix=settings.API_PREFIX, tags=["three-way-match"])
 app.include_router(approval_routing.router, prefix=settings.API_PREFIX, tags=["approval-routing"])
 app.include_router(reporting.router, prefix=settings.API_PREFIX, tags=["reporting"])
+app.include_router(purchase_orders.router, prefix=settings.API_PREFIX, tags=["purchase-orders"])
 
 # Tier info endpoint (always available)
 from app.tier_config.tiers import register_tier_routes
