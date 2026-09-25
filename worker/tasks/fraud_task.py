@@ -262,10 +262,10 @@ def check_fraud_patterns(self, document_id: str):
 
             if session_result:
                 session_result.current_stage = "fraud_check_complete"
-                session_result.progress_percent = 75
+                session_result.progress_percent = 85
                 history_entry = {
                     "stage": "fraud_check_complete",
-                    "progress": 75,
+                    "progress": 85,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "message": "Fraud pattern detection completed"
                 }
