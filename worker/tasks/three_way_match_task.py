@@ -63,7 +63,7 @@ def three_way_match(self, document_id: str):
     - Compares invoice.total_amount against po.expected_amount AND goods_receipt.received_amount
     - Tolerance threshold configurable (default 2%)
     - Mismatch beyond tolerance → rule_violations row with severity="high"
-    - Updates document_session to three_way_match_complete, progress=90
+    - Updates document_session to three_way_match_complete, progress=80
     """
     logger.info(f"Running three-way match for document {document_id}")
 
@@ -84,21 +84,21 @@ def three_way_match(self, document_id: str):
 
             if not po_reference:
                 logger.info(f"Document {document_id} has no PO reference, skipping three-way match")
-                _update_session(session, document_id, "three_way_match_complete", 90, "No PO reference found, skipped")
+                _update_session(session, document_id, "three_way_match_complete", 80, "No PO reference found, skipped")
                 session.commit()
                 return {"status": "completed", "skipped": True, "reason": "no_po_reference"}
 
             if not total_str:
                 logger.warning(f"Document {document_id} has no total_amount extracted")
-                _update_session(session, document_id, "three_way_match_complete", 90, "No total amount extracted, skipped")
+                _update_session(session, document_id, "three_way_match_complete", 80, "No total amount extracted, skipped")
                 session.commit()
                 return {"status": "completed", "skipped": True, "reason": "no_total_amount"}
 
             try:
                 invoice_total = Decimal(total_str)
             except Exception as e:
-                logger.warning(f"Failed to parse invoice total for {document_id}: {e}")
-                _update_session(session, document_id, "three_way_match_complete", 90, "Failed to parse total amount")
+                logger.warning(f"Failed to parse amount/date for {document_id}: {e}")
+                _update_session(session, document_id, "three_way_match_complete", 80, "Failed to parse total amount")
                 session.commit()
                 return {"status": "error", "reason": "parse_failed"}
 
@@ -109,7 +109,7 @@ def three_way_match(self, document_id: str):
 
             if not po:
                 logger.info(f"No PO found with number {po_reference} for document {document_id}")
-                _update_session(session, document_id, "three_way_match_complete", 90, f"PO {po_reference} not found, skipped")
+                _update_session(session, document_id, "three_way_match_complete", 80, f"PO {po_reference} not found, skipped")
                 session.commit()
                 return {"status": "completed", "skipped": True, "reason": "po_not_found"}
 
@@ -198,7 +198,7 @@ def three_way_match(self, document_id: str):
                 session,
                 document_id,
                 "three_way_match_complete",
-                90,
+                80,
                 f"Three-way match completed. Violations: {violations_created}"
             )
 

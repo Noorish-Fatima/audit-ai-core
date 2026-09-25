@@ -1,20 +1,26 @@
 from pathlib import Path
-from typing import Optional
-from datetime import datetime
+from typing import Optional, List
+from datetime import datetime, timezone
+from decimal import Decimal
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, case, and_, or_, String
 from sqlalchemy.orm import selectinload
+from pydantic import BaseModel
 import uuid
 import os
 import shutil
 
 from app.tier_config import settings
 from app.db.session import get_session
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, require_role
 from app.models.document import Document, DocumentSession, DocumentStatus
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.models.extracted_field import ExtractedField
+from app.models.flag import FraudFlag, DuplicateFlag, DuplicateMatchType
+from app.models.rule import RuleViolation
+from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -65,17 +71,30 @@ def get_file_extension(mime_type: str) -> str:
 
 
 async def enqueue_processing_chain(document_id: str):
-    """Enqueue the Celery OCR normalization task for a document."""
+    """Enqueue the full document processing pipeline chain."""
     try:
         # Use Celery's send_task to avoid import issues between API and worker containers
-        from celery import Celery
+        from celery import Celery, chain
         from app.config import settings
         celery_app = Celery(
             "audit_ai_api",
             broker=settings.CELERY_BROKER_URL,
             backend=settings.CELERY_RESULT_BACKEND,
         )
-        celery_app.send_task("ocr_normalize", args=[document_id])
+        # Build and apply the full pipeline chain directly using immutable signatures (si)
+        # Use full task names as registered in the worker
+        pipeline = chain(
+            celery_app.signature("ocr_normalize", args=(document_id,), immutable=True) |
+            celery_app.signature("extract_invoice_fields", args=(document_id,), immutable=True) |
+            celery_app.signature("worker.tasks.validation_task.validate_critical_fields", args=(document_id,), immutable=True) |
+            celery_app.signature("worker.tasks.validation_task.check_duplicates", args=(document_id,), immutable=True) |
+            celery_app.signature("worker.tasks.validation_task.evaluate_rules", args=(document_id,), immutable=True) |
+            celery_app.signature("worker.tasks.fraud_task.check_fraud_patterns", args=(document_id,), immutable=True) |
+            celery_app.signature("worker.tasks.three_way_match_task.three_way_match", args=(document_id,), immutable=True) |
+            celery_app.signature("worker.tasks.pipeline_tasks.route_decision", args=(document_id,), immutable=True) |
+            celery_app.signature("worker.tasks.pipeline_tasks.audit_log_commit", args=(document_id,), immutable=True)
+        )
+        pipeline.apply_async()
     except Exception:
         import logging
         logging.getLogger(__name__).exception(f"Failed to enqueue processing for document {document_id}")
@@ -141,6 +160,123 @@ async def upload_document(
         "document_id": document.id,
         "status": "accepted",
         "message": "Document uploaded successfully. Processing started."
+    }
+
+
+@router.get(
+    "/review-queue",
+    dependencies=[Depends(require_role(UserRole.admin, UserRole.approver, UserRole.auditor))]
+)
+async def get_review_queue(
+    status: Optional[List[str]] = Query(None, description="Filter by status"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get documents requiring review, sorted by priority score.
+    Priority = higher severity flags + lower confidence = higher priority (lower number = more urgent)
+    """
+    # Base query for documents in review-required states
+    review_statuses = [DocumentStatus.review, DocumentStatus.flagged, DocumentStatus.duplicate]
+    if status:
+        try:
+            review_statuses = [DocumentStatus(s) for s in status]
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status in list")
+
+    # Convert enum values to strings for proper PostgreSQL enum comparison
+    status_values = [s.value for s in review_statuses]
+    # Use text cast to avoid enum comparison issues
+    query = select(Document).where(Document.status.cast(String).in_(status_values))
+
+    # Join with extracted fields for confidence scores
+    # Join with fraud_flags for severity
+    # Join with rule_violations for count
+    # Join with duplicate_flags for count
+
+    # We'll compute priority in Python for flexibility
+    result = await db.execute(query.order_by(desc(Document.created_at)))
+    documents = result.scalars().all()
+
+    # Compute priority scores
+    doc_data = []
+    for doc in documents:
+        # Get confidence scores for critical fields
+        fields_result = await db.execute(
+            select(ExtractedField).where(
+                ExtractedField.document_id == doc.id,
+                ExtractedField.field_name.in_(["invoice_number", "vendor_name", "total_amount", "invoice_date"])
+            )
+        )
+        fields = fields_result.scalars().all()
+        confidences = {f.field_name: f.confidence_score for f in fields}
+        avg_confidence = sum(confidences.values()) / len(confidences) if confidences else 0.0
+        min_confidence = min(confidences.values()) if confidences else 0.0
+
+        # Get fraud flags
+        fraud_result = await db.execute(
+            select(FraudFlag).where(FraudFlag.document_id == doc.id)
+        )
+        fraud_flags = fraud_result.scalars().all()
+
+        # Get rule violations
+        violations_result = await db.execute(
+            select(RuleViolation).where(RuleViolation.document_id == doc.id)
+        )
+        violation_count = len(violations_result.scalars().all())
+
+        # Get duplicate flags
+        dup_result = await db.execute(
+            select(DuplicateFlag).where(DuplicateFlag.document_id == doc.id)
+        )
+        duplicate_count = len(dup_result.scalars().all())
+
+        # Priority score: lower = more urgent
+        # Base priority from status
+        status_priority = {"flagged": 0, "review": 1, "duplicate": 2}.get(doc.status.value, 3)
+        
+        # Adjust by severity and confidence
+        priority_score = (
+            status_priority * 100 +
+            (4 - max(({"critical": 4, "high": 3, "medium": 2, "low": 1}.get(f.severity, 0) for f in fraud_flags), default=0)) * 20 +
+            (1 - min_confidence) * 50 +
+            violation_count * 10 +
+            duplicate_count * 15
+        )
+
+        doc_data.append({
+            "id": doc.id,
+            "original_filename": doc.original_filename,
+            "mime_type": doc.mime_type,
+            "file_size": doc.file_size,
+            "status": doc.status.value,
+            "uploaded_by": doc.uploaded_by,
+            "created_at": doc.created_at.isoformat() if doc.created_at else None,
+            "priority_score": round(priority_score, 2),
+            "min_confidence": round(min_confidence, 2),
+            "max_fraud_severity": max(({"critical": 4, "high": 3, "medium": 2, "low": 1}.get(f.severity, 0) for f in fraud_flags), default=0),
+            "violation_count": violation_count,
+            "duplicate_count": duplicate_count,
+            "fraud_flag_types": [f.flag_type.value if hasattr(f.flag_type, 'value') else f.flag_type for f in fraud_flags],
+        })
+
+    # Sort by priority (lower = more urgent)
+    doc_data.sort(key=lambda x: x["priority_score"])
+
+    # Paginate
+    total = len(doc_data)
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = doc_data[start:end]
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size,
     }
 
 
@@ -215,6 +351,10 @@ async def get_document(
                 "value": getattr(ef, "field_value", getattr(ef, "value", None)),
                 "confidence": getattr(ef, "confidence_score", getattr(ef, "confidence", 0.0)),
                 "bbox": getattr(ef, "bbox", None),
+                "original_value": getattr(ef, "original_value", None),
+                "is_corrected": getattr(ef, "is_corrected", False),
+                "corrected_by": str(getattr(ef, "corrected_by", None)) if getattr(ef, "corrected_by", None) else None,
+                "corrected_at": getattr(ef, "corrected_at", None).isoformat() if getattr(ef, "corrected_at", None) else None,
             }
             for ef in document.extracted_fields
         ],
@@ -342,3 +482,262 @@ async def serve_document_file(
         media_type=media_type,
         filename=document.original_filename,
     )
+
+    # Join with extracted fields for confidence scores
+    # Join with fraud_flags for severity
+    # Join with rule_violations for count
+    # Join with duplicate_flags for count
+
+    # We'll compute priority in Python for flexibility
+    result = await db.execute(query.order_by(desc(Document.created_at)))
+    documents = result.scalars().all()
+
+    # Compute priority scores
+    doc_data = []
+    for doc in documents:
+        # Get confidence scores for critical fields
+        fields_result = await db.execute(
+            select(ExtractedField).where(
+                ExtractedField.document_id == doc.id,
+                ExtractedField.field_name.in_(["invoice_number", "vendor_name", "total_amount", "invoice_date"])
+            )
+        )
+        fields = fields_result.scalars().all()
+        confidences = {f.field_name: f.confidence_score for f in fields}
+        avg_confidence = sum(confidences.values()) / len(confidences) if confidences else 0.0
+        min_confidence = min(confidences.values()) if confidences else 0.0
+
+        # Get fraud flags
+        fraud_result = await db.execute(
+            select(FraudFlag).where(FraudFlag.document_id == doc.id)
+        )
+        fraud_flags = fraud_result.scalars().all()
+        max_fraud_severity = 0
+        for f in fraud_flags:
+            sev_map = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+            max_fraud_severity = max(max_fraud_severity, sev_map.get(f.severity, 0))
+
+        # Get rule violations
+        violations_result = await db.execute(
+            select(RuleViolation).where(RuleViolation.document_id == doc.id)
+        )
+        violation_count = len(violations_result.scalars().all())
+
+        # Get duplicate flags
+        dup_result = await db.execute(
+            select(DuplicateFlag).where(DuplicateFlag.document_id == doc.id)
+        )
+        duplicate_count = len(dup_result.scalars().all())
+
+        # Priority score: lower = more urgent
+        # Base priority from status
+        status_priority = {"flagged": 0, "review": 1, "duplicate": 2}.get(doc.status.value, 3)
+        
+        # Adjust by severity and confidence
+        priority_score = (
+            status_priority * 100 +
+            (4 - max_fraud_severity) * 20 +
+            (1 - min_confidence) * 50 +
+            violation_count * 10 +
+            duplicate_count * 15
+        )
+
+        doc_data.append({
+            "id": doc.id,
+            "original_filename": doc.original_filename,
+            "mime_type": doc.mime_type,
+            "file_size": doc.file_size,
+            "status": doc.status.value,
+            "uploaded_by": doc.uploaded_by,
+            "created_at": doc.created_at.isoformat() if doc.created_at else None,
+            "priority_score": round(priority_score, 2),
+            "min_confidence": round(min_confidence, 2),
+            "max_fraud_severity": max_fraud_severity,
+            "violation_count": violation_count,
+            "duplicate_count": duplicate_count,
+            "fraud_flag_types": [f.flag_type.value for f in fraud_flags],
+        })
+
+    # Sort by priority (lower = more urgent)
+    doc_data.sort(key=lambda x: x["priority_score"])
+
+    # Paginate
+    total = len(doc_data)
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = doc_data[start:end]
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size,
+    }
+
+
+class FieldCorrection(BaseModel):
+    field_name: str
+    corrected_value: str
+
+
+class ReviewDecision(BaseModel):
+    action: str  # "verify", "flag", "confirm_duplicate"
+    corrections: Optional[List[FieldCorrection]] = None
+    reason: Optional[str] = None
+
+
+@router.patch(
+    "/{document_id}/review",
+    dependencies=[Depends(require_role(UserRole.admin, UserRole.approver))]
+)
+async def review_document(
+    document_id: uuid.UUID,
+    decision: ReviewDecision,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Human review correction endpoint.
+    - Accepts corrected field values
+    - Preserves original AI value in original_value before overwriting field_value
+    - Sets is_corrected=true, corrected_by, corrected_at
+    - Writes audit_log with before/after state
+    - Allows setting final status: verified / flagged / confirmed_duplicate
+    """
+    # Validate action
+    valid_actions = {"verify", "flag", "confirm_duplicate"}
+    if decision.action not in valid_actions:
+        raise HTTPException(status_code=400, detail=f"Invalid action. Must be one of: {valid_actions}")
+
+    # Get document
+    result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Must be in review-required state
+    if doc.status not in (DocumentStatus.review, DocumentStatus.flagged, DocumentStatus.duplicate):
+        raise HTTPException(status_code=400, detail=f"Document not in review state (current: {doc.status.value})")
+
+    # Capture before state
+    before_fields_result = await db.execute(
+        select(ExtractedField).where(ExtractedField.document_id == document_id)
+    )
+    before_fields = before_fields_result.scalars().all()
+    before_state = {
+        "status": doc.status.value,
+        "fields": [
+            {
+                "field_name": f.field_name,
+                "field_value": f.field_value,
+                "confidence_score": f.confidence_score,
+                "is_corrected": f.is_corrected,
+            }
+            for f in before_fields
+        ]
+    }
+
+    # Apply corrections if provided
+    if decision.corrections:
+        for correction in decision.corrections:
+            field_result = await db.execute(
+                select(ExtractedField).where(
+                    ExtractedField.document_id == document_id,
+                    ExtractedField.field_name == correction.field_name
+                )
+            )
+            field = field_result.scalar_one_or_none()
+            if field:
+                # Preserve original AI value
+                field.original_value = field.field_value
+                # Apply correction
+                field.field_value = correction.corrected_value
+                field.is_corrected = True
+                field.corrected_by = current_user.id
+                field.corrected_at = datetime.now(timezone.utc)
+            else:
+                # Create new corrected field
+                new_field = ExtractedField(
+                    document_id=document_id,
+                    field_name=correction.field_name,
+                    field_value=correction.corrected_value,
+                    confidence_score=1.0,  # Human corrected = max confidence
+                    extraction_method="human_review",
+                    is_corrected=True,
+                    original_value=None,
+                    corrected_by=current_user.id,
+                    corrected_at=datetime.now(timezone.utc),
+                )
+                db.add(new_field)
+
+    # Set final status
+    if decision.action == "verify":
+        doc.status = DocumentStatus.verified
+    elif decision.action == "flag":
+        doc.status = DocumentStatus.flagged
+    elif decision.action == "confirm_duplicate":
+        doc.status = DocumentStatus.duplicate
+
+    # Write audit log
+    after_fields_result = await db.execute(
+        select(ExtractedField).where(ExtractedField.document_id == document_id)
+    )
+    after_fields = after_fields_result.scalars().all()
+    after_state = {
+        "status": doc.status.value,
+        "action": decision.action,
+        "reason": decision.reason,
+        "corrected_by": current_user.id,
+        "fields": [
+            {
+                "field_name": f.field_name,
+                "field_value": f.field_value,
+                "confidence_score": f.confidence_score,
+                "is_corrected": f.is_corrected,
+                "corrected_by": str(f.corrected_by) if f.corrected_by else None,
+                "corrected_at": f.corrected_at.isoformat() if f.corrected_at else None,
+            }
+            for f in after_fields
+        ]
+    }
+
+    audit = AuditLog(
+        document_id=document_id,
+        action="human_review",
+        before_state=before_state,
+        after_state=after_state
+    )
+    db.add(audit)
+
+    # Update session
+    session_result = await db.execute(
+        select(DocumentSession)
+        .where(DocumentSession.document_id == document_id)
+        .order_by(DocumentSession.updated_at.desc())
+        .limit(1)
+    )
+    session_obj = session_result.scalar_one_or_none()
+    if session_obj:
+        session_obj.current_stage = "review_complete"
+        session_obj.progress_percent = 100
+        history_entry = {
+            "stage": "review_complete",
+            "progress": 100,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": f"Human review: {decision.action}" + (f" ({decision.reason})" if decision.reason else "")
+        }
+        updated_history = list(session_obj.stage_history) if session_obj.stage_history else []
+        updated_history.append(history_entry)
+        session_obj.stage_history = updated_history
+
+    await db.commit()
+
+    return {
+        "document_id": str(document_id),
+        "status": doc.status.value,
+        "message": f"Review completed: {decision.action}",
+        "corrections_applied": len(decision.corrections) if decision.corrections else 0,
+    }

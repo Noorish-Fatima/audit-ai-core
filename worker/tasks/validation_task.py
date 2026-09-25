@@ -20,6 +20,29 @@ from rapidfuzz import fuzz
 
 logger = logging.getLogger(__name__)
 
+
+def _update_session(session: Session, document_id: str, stage: str, progress: int, message: str):
+    """Update document session with new stage and progress."""
+    session_result = session.execute(
+        select(DocumentSession)
+        .where(DocumentSession.document_id == document_id)
+        .order_by(DocumentSession.updated_at.desc())
+    ).scalar_one_or_none()
+
+    if session_result:
+        session_result.current_stage = stage
+        session_result.progress_percent = progress
+        history_entry = {
+            "stage": stage,
+            "progress": progress,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": message
+        }
+        updated_history = list(session_result.stage_history) if session_result.stage_history else []
+        updated_history.append(history_entry)
+        session_result.stage_history = updated_history
+
+
 def get_field_value(session: Session, document_id: str, field_name: str) -> Tuple[Optional[str], float]:
     """Helper to get field value and confidence from extracted fields."""
     result = session.execute(
@@ -47,6 +70,9 @@ def validate_critical_fields(self, document_id: str):
 
     with SyncSessionLocal() as session:
         try:
+            # Update session stage
+            _update_session(session, document_id, "quality_gate", 55, "Validating critical fields and normalizing vendor")
+
             # 1. Quality Gate
             critical_fields = ["invoice_number", "vendor_name", "total_amount", "invoice_date"]
             failed_fields = []
@@ -130,6 +156,8 @@ def check_duplicates(self, document_id: str):
 
     with SyncSessionLocal() as session:
         try:
+            _update_session(session, document_id, "duplicate_check", 60, "Checking for duplicate invoices")
+            
             vendor_name, _ = get_field_value(session, document_id, "vendor_name")
             invoice_num, _ = get_field_value(session, document_id, "invoice_number")
             total_str, _ = get_field_value(session, document_id, "total_amount")
@@ -345,11 +373,11 @@ def evaluate_rules(self, document_id: str):
 
             if session_result:
                 session_result.current_stage = "rules_complete"
-                session_result.progress_percent = 75
+                session_result.progress_percent = 65
 
                 history_entry = {
                     "stage": "rules_complete",
-                    "progress": 75,
+                    "progress": 65,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "message": f"Rules engine completed. {violations_created} violations found."
                 }
