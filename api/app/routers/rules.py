@@ -84,7 +84,7 @@ async def list_rules(
     db: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user)
 ):
-    result = await db.execute(select(Rule).where(Rule.active == True))
+    result = await db.execute(select(Rule).order_by(Rule.name))
     return result.scalars().all()
 
 @router.get(

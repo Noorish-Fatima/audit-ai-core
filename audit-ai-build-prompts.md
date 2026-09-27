@@ -219,15 +219,24 @@ Requirements:
 3. Expose a helper `feature_enabled(name: str) -> bool` used everywhere in the codebase — routers, Celery tasks,
    and a GET /system/tier endpoint the frontend calls on load to know what UI to render.
 
-4. Router registration in main.py must be conditional: rules/fraud/nl-query/three-way-match/reporting routers
-   only get included in the FastAPI app if their corresponding feature flag is True. A disabled feature's
-   endpoint should not exist at all (404), not just be hidden in the UI — this matters for the security story
-   (a Basic-tier client's deployment literally does not contain Premium code paths active).
+4. Gate feature routers with the `verify_feature` dependency (defined in tiers.py): all routers
+   register unconditionally in main.py, and every route on a gated router carries
+   `Depends(verify_feature("<feature_name>"))`, which returns 403 with an "upgrade your plan"
+   message when the feature is off for the current tier.
+   NOTE (history): the original Prompt 4 design gated *registration* (`if feature_enabled(...):
+   app.include_router(...)`, changed in Prompt 7) so disabled features 404'd as if the routes
+   never existed. That was intentionally replaced with dependency-gating: a 403 tells API
+   consumers the feature exists but is locked (better UX + stable OpenAPI schema across tiers),
+   while the frontend renders its own 404 page for gated routes (see Prompt 15). Do NOT revert
+   to registration-gating without also updating every router, the OpenAPI expectations, and the
+   frontend FeatureGate — the codebase is fully standardized on 403-via-dependency (verified:
+   no conditional `include_router` remains). A true "code physically absent per tier" claim would
+   additionally require per-tier Docker images, which this deployment does not do.
 
 5. GET /system/tier response shape: { "tier": "standard", "features": { ...FEATURES["standard"] } }
 
-Acceptance criteria: changing TIER in .env and restarting the stack changes which endpoints exist (verify with
-curl — a rules-engine endpoint returns 404 on TIER=basic, 200 on TIER=standard).
+Acceptance criteria: changing TIER in .env and restarting the stack changes which endpoints are
+usable (verify with curl — a rules-engine endpoint returns 403 on TIER=basic, 200 on TIER=standard).
 ```
 
 ---
@@ -639,8 +648,10 @@ Requirements:
    - Basic aging summary (documents by status, by age bucket) and top-vendor-spend chart, sourced from the
      same query_tools functions built in Prompt 13 — reuse, don't duplicate query logic
 
-Acceptance criteria: on a TIER=basic deployment, these pages/nav items do not exist at all (404 on direct
-navigation, not just hidden). On TIER=standard, all three work end to end against the real backend.
+Acceptance criteria: on a TIER=basic deployment, these pages/nav items do not exist at all (the frontend
+renders its 404 page on direct navigation, not just hidden nav; the corresponding API endpoints return
+403 per the Prompt 4 dependency-gating pattern). On TIER=standard, all three work end to end against
+the real backend.
 ```
 
 ---

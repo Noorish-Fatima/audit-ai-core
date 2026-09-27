@@ -165,7 +165,7 @@ export interface ReviewDecision {
 
 export interface QueryResponse {
   answer: string;
-  structured_data: Record<string, unknown> | null;
+  structured_data: Record<string, unknown> | Array<Record<string, unknown>> | null;
   intent: string;
   error: string | null;
 }
@@ -332,6 +332,59 @@ export function useNLQuery() {
       const response = await api.post('/nl-query/query', { question });
       return response.data;
     },
+  });
+}
+
+export interface NLQueryHistoryItem {
+  id: string;
+  question: string;
+  answer: string | null;
+  intent: string | null;
+  created_at: string | null;
+}
+
+export function useNLQueryHistory(enabled = true) {
+  return useQuery({
+    queryKey: ['nlQueryHistory'],
+    queryFn: async () => {
+      const response = await api.get('/nl-query');
+      return response.data as NLQueryHistoryItem[];
+    },
+    enabled,
+    staleTime: 30000,
+  });
+}
+
+export function useNLQueryDetail(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['nlQueryDetail', id],
+    queryFn: async () => {
+      const response = await api.get(`/nl-query/${id}`);
+      return response.data;
+    },
+    enabled: enabled && !!id,
+    staleTime: 60000,
+  });
+}
+
+export interface ReportSummary {
+  window_days: number;
+  aging: {
+    total: number;
+    by_status: Record<string, number>;
+    by_age_bucket: Record<string, number>;
+  };
+  top_vendors: Array<{ vendor: string; total_spend: string }>;
+}
+
+export function useReportSummary(days = 90) {
+  return useQuery({
+    queryKey: ['reportSummary', days],
+    queryFn: async () => {
+      const response = await api.get(`/reporting/summary?days=${days}`);
+      return response.data as ReportSummary;
+    },
+    staleTime: 60000,
   });
 }
 
@@ -598,7 +651,7 @@ export interface ReviewDecision {
 
 export interface QueryResponse {
   answer: string;
-  structured_data: Record<string, unknown> | null;
+  structured_data: Record<string, unknown> | Array<Record<string, unknown>> | null;
   intent: string;
   error: string | null;
 }
@@ -728,7 +781,7 @@ export interface ReviewDecision {
 
 export interface QueryResponse {
   answer: string;
-  structured_data: Record<string, unknown> | null;
+  structured_data: Record<string, unknown> | Array<Record<string, unknown>> | null;
   intent: string;
   error: string | null;
 }
@@ -858,7 +911,7 @@ export interface ReviewDecision {
 
 export interface QueryResponse {
   answer: string;
-  structured_data: Record<string, unknown> | null;
+  structured_data: Record<string, unknown> | Array<Record<string, unknown>> | null;
   intent: string;
   error: string | null;
 }

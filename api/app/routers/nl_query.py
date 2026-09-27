@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from app.db.session import get_session
 from app.dependencies.auth import get_current_user
 from app.tier_config.tiers import verify_feature
 from app.agents.nl_query_graph import run_nl_query
@@ -14,7 +15,8 @@ class QueryRequest(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str
-    structured_data: dict | None
+    # Tabular answers come back as a list of rows; scalar answers as a dict.
+    structured_data: dict | list | None
     intent: str
     error: str | None
 
@@ -45,10 +47,53 @@ async def query_nl(
 
 
 @router.get("/{query_id}", dependencies=[Depends(verify_feature("nl_query"))])
-async def get_nl_query(query_id: str, current_user=Depends(get_current_user)):
-    return {"message": "Get NL query endpoint - not implemented yet", "query_id": query_id}
+async def get_nl_query(
+    query_id: str,
+    db = Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    """Re-view a past NL query (own history only)."""
+    from sqlalchemy import select
+    from app.models.query_log import NLQueryLog
+
+    log = await db.get(NLQueryLog, query_id)
+    if not log or (log.user_id and str(log.user_id) != str(current_user.id)):
+        raise HTTPException(status_code=404, detail="Query not found")
+    return {
+        "id": str(log.id),
+        "question": log.question_text,
+        "answer": log.response_text,
+        "intent": log.resolved_intent,
+        "tool_called": log.tool_called,
+        "tool_args": log.tool_args,
+        "created_at": log.created_at.isoformat() if log.created_at else None,
+    }
 
 
 @router.get("", dependencies=[Depends(verify_feature("nl_query"))])
-async def list_nl_queries(current_user=Depends(get_current_user)):
-    return {"message": "List NL queries endpoint - not implemented yet"}
+async def list_nl_queries(
+    db = Depends(get_session),
+    current_user=Depends(get_current_user),
+    limit: int = 20,
+):
+    """List the current user's recent NL queries for the history sidebar."""
+    from sqlalchemy import select, desc
+    from app.models.query_log import NLQueryLog
+
+    result = await db.execute(
+        select(NLQueryLog)
+        .where(NLQueryLog.user_id == current_user.id)
+        .order_by(desc(NLQueryLog.created_at))
+        .limit(min(limit, 50))
+    )
+    logs = result.scalars().all()
+    return [
+        {
+            "id": str(log.id),
+            "question": log.question_text,
+            "answer": log.response_text,
+            "intent": log.resolved_intent,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in logs
+    ]

@@ -327,7 +327,26 @@ async def get_top_vendors_by_spend(
             doc_data[doc_id] = {}
         doc_data[doc_id][field_name] = field_value
     
-    # Aggregate by vendor
+    # Load all vendors once for canonical resolution (same rapidfuzz
+    # pattern as get_vendor_spend / validate_critical_fields).
+    from rapidfuzz import fuzz
+
+    vendors_result = await db.execute(select(Vendor))
+    all_vendors = vendors_result.scalars().all()
+
+    def resolve_canonical(name: str) -> str:
+        best: Optional[str] = None
+        best_score = 0.0
+        for v in all_vendors:
+            score = fuzz.token_set_ratio(name, v.canonical_name)
+            for alias in v.aliases or []:
+                score = max(score, fuzz.token_set_ratio(name, alias))
+            if score > best_score:
+                best_score = score
+                best = v.canonical_name
+        return best if best is not None and best_score >= 85.0 else name
+
+    # Aggregate by canonical vendor
     vendor_spend = {}
     for doc_id, data in doc_data.items():
         vendor = data.get("vendor_name")
@@ -335,10 +354,11 @@ async def get_top_vendors_by_spend(
         if vendor and total:
             try:
                 amount = Decimal(total)
-                if vendor in vendor_spend:
-                    vendor_spend[vendor] += amount
+                canonical = resolve_canonical(vendor)
+                if canonical in vendor_spend:
+                    vendor_spend[canonical] += amount
                 else:
-                    vendor_spend[vendor] = amount
+                    vendor_spend[canonical] = amount
             except:
                 pass
     
@@ -349,3 +369,40 @@ async def get_top_vendors_by_spend(
         {"vendor": vendor, "total_spend": str(amount)}
         for vendor, amount in sorted_vendors[:limit]
     ]
+
+async def get_aging_summary(
+    db: AsyncSession,
+) -> dict:
+    """
+    Aging summary for the Reports page: document counts by status and by
+    age bucket (days since creation). Reused by the reporting endpoint
+    (do not duplicate this logic elsewhere).
+    """
+    docs_result = await db.execute(
+        select(Document.status, Document.created_at)
+    )
+    rows = docs_result.all()
+
+    now = datetime.utcnow()
+    by_status: dict = {}
+    buckets = {"0-7 days": 0, "8-30 days": 0, "31-90 days": 0, "90+ days": 0}
+
+    for status, created_at in rows:
+        key = status.value if hasattr(status, "value") else str(status)
+        by_status[key] = by_status.get(key, 0) + 1
+        if created_at:
+            age_days = (now - created_at.replace(tzinfo=None)).days
+            if age_days <= 7:
+                buckets["0-7 days"] += 1
+            elif age_days <= 30:
+                buckets["8-30 days"] += 1
+            elif age_days <= 90:
+                buckets["31-90 days"] += 1
+            else:
+                buckets["90+ days"] += 1
+
+    return {
+        "total": len(rows),
+        "by_status": by_status,
+        "by_age_bucket": buckets,
+    }
