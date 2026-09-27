@@ -5,3 +5,8 @@ audit-ai-build-prompts.md
 stuff.txt
 mock_invoice_1781215849743.png
 test_invoice4.png
+# Node
+node_modules
+.next
+frontend/node_modules
+frontend/.next
