@@ -55,7 +55,7 @@ def extract_invoice_fields(self, document_id: str) -> dict:
         document = result.scalar_one_or_none()
 
         if not document:
-            logger.error(f"Document {document_id} not found")
+            logger.warning(f"Document {document_id} not found, skipping")
             return {"status": "error", "message": "Document not found"}
 
         # Update document status to extracting

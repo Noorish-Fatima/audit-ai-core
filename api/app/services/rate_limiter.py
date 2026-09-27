@@ -42,7 +42,16 @@ class RateLimiter:
         results = await pipe.execute()
 
         current_count = results[1]
-        ttl = window_seconds - (current_time - (current_time % window_seconds))
+        # Seconds until the current epoch-aligned window expires.
+        # NOTE: this was previously computed as
+        #   window_seconds - (current_time - (current_time % window_seconds)),
+        # which subtracts an epoch timestamp (~1.8e9) from the window and
+        # always yields a huge NEGATIVE retry-after (e.g. -1790420400).
+        # The correct remainder is just (current_time % window_seconds).
+        ttl = window_seconds - (current_time % window_seconds)
+        # Hard clamp so a clock anomaly can never surface a negative or
+        # larger-than-window retry-after to clients again.
+        ttl = max(1, min(ttl, window_seconds))
 
         if current_count >= limit:
             return False, current_count, ttl

@@ -337,7 +337,6 @@ to vision model; currency is never fabricated when absent from the source docume
 ---
 
 ## PROMPT 8 — Validation & Duplicate Detection
-
 ```
 Build critical-field validation and duplicate detection in worker/tasks/validation_task.py.
 

@@ -77,7 +77,7 @@ def route_decision(self, document_id: str):
         try:
             doc = session.get(Document, document_id)
             if not doc:
-                logger.error(f"Document {document_id} not found")
+                logger.warning(f"Document {document_id} not found, skipping")
                 return {"status": "error", "reason": "document_not_found"}
 
             # Rule 1: If already in a review-required state, do not override
@@ -203,7 +203,7 @@ def audit_log_commit(self, document_id: str):
         try:
             doc = session.get(Document, document_id)
             if not doc:
-                logger.error(f"Document {document_id} not found")
+                logger.warning(f"Document {document_id} not found, skipping")
                 return {"status": "error", "reason": "document_not_found"}
 
             # Gather all pipeline data

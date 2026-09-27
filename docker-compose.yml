@@ -67,12 +67,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
     container_name: audit-ai-frontend
     depends_on:
       api:
         condition: service_healthy
     environment:
-    - NEXT_PUBLIC_API_URL=http://api:8000
+    - NEXT_PUBLIC_API_URL=http://localhost:8000
+    - API_INTERNAL_URL=http://api:8000
     - NODE_ENV=production
     healthcheck:
       interval: 30s

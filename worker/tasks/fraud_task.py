@@ -105,7 +105,7 @@ def check_fraud_patterns(self, document_id: str):
         try:
             doc = session.get(Document, document_id)
             if not doc:
-                logger.error(f"Document {document_id} not found")
+                logger.warning(f"Document {document_id} not found, skipping")
                 return {"status": "error", "reason": "document_not_found"}
 
             vendor_name = get_field_value(session, document_id, "vendor_name")

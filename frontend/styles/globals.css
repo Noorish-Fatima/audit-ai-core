@@ -1,0 +1,364 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  background-color: #f8fafc;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+}
+
+.card {
+  @apply bg-white rounded-xl shadow-card border border-slate-200;
+}
+
+.card-hover {
+  @apply transition-shadow duration-200 hover:shadow-card-hover;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 focus-ring disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-primary {
+  @apply btn bg-primary-600 text-white hover:bg-primary-700;
+}
+
+.btn-secondary {
+  @apply btn bg-slate-100 text-slate-700 hover:bg-slate-200;
+}
+
+.btn-danger {
+  @apply btn bg-red-600 text-white hover:bg-red-700;
+}
+
+.btn-ghost {
+  @apply btn bg-transparent text-slate-600 hover:bg-slate-100;
+}
+
+.input {
+  @apply w-full px-3 py-2 border border-slate-300 rounded-lg text-sm placeholder-slate-400 focus-ring transition-colors disabled:bg-slate-50 disabled:text-slate-500;
+}
+
+.label {
+  @apply block text-sm font-medium text-slate-700 mb-1;
+}
+
+.badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.badge-primary {
+  @apply badge bg-primary-100 text-primary-800;
+}
+
+.badge-success {
+  @apply badge bg-success-100 text-success-600;
+}
+
+.badge-warning {
+  @apply badge bg-warning-100 text-warning-600;
+}
+
+.badge-danger {
+  @apply badge bg-danger-100 text-danger-600;
+}
+
+.badge-gray {
+  @apply badge bg-slate-100 text-slate-800;
+}
+
+.page-container {
+  @apply min-h-screen bg-slate-50;
+}
+
+.page-content {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8;
+}
+
+.page-header {
+  @apply mb-8;
+}
+
+.page-title {
+  @apply text-2xl font-bold text-slate-900;
+}
+
+.page-subtitle {
+  @apply text-slate-600 mt-1;
+}
+
+.section-card {
+  @apply card overflow-hidden;
+}
+
+.section-header {
+  @apply px-6 py-4 border-b border-slate-200 flex items-center justify-between;
+}
+
+.section-title {
+  @apply text-lg font-semibold text-slate-900;
+}
+
+.table-container {
+  @apply overflow-x-auto;
+}
+
+.data-table {
+  @apply w-full;
+}
+
+.data-table th {
+  @apply px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200;
+}
+
+.data-table td {
+  @apply px-4 py-4 text-sm text-slate-900 border-b border-slate-100;
+}
+
+.data-table tr:hover td {
+  @apply bg-slate-50;
+}
+
+.status-badge {
+  @apply badge;
+}
+
+.status-pending { @apply badge-warning; }
+.status-ocr_processing { @apply badge-primary; }
+.status-extracting { @apply badge-primary; }
+.status-validating { @apply badge-primary; }
+.status-review { @apply badge-warning; }
+.status-verified { @apply badge-success; }
+.status-flagged { @apply badge-danger; }
+.status-duplicate { @apply badge-danger; }
+
+.severity-critical { @apply badge-danger; }
+.severity-high { @apply badge-danger; }
+.severity-medium { @apply badge-warning; }
+.severity-low { @apply badge-gray; }
+
+.progress-bar {
+  @apply h-2 bg-slate-200 rounded-full overflow-hidden;
+}
+
+.progress-bar-fill {
+  @apply h-full bg-primary-600 rounded-full transition-all duration-300 ease-out;
+}
+
+.drag-drop-zone {
+  @apply border-2 border-dashed border-slate-300 rounded-xl p-8 text-center transition-all duration-200 hover:border-primary-400 hover:bg-primary-50;
+}
+
+.drag-drop-zone.active {
+  @apply border-primary-500 bg-primary-50;
+}
+
+.file-preview {
+  @apply relative aspect-video rounded-lg overflow-hidden bg-slate-100;
+}
+
+.sidebar {
+  @apply w-64 bg-white border-r border-slate-200 flex flex-col h-full;
+}
+
+.sidebar-nav {
+  @apply flex-1 p-4 space-y-1 overflow-y-auto;
+}
+
+.nav-item {
+  @apply w-full px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-primary-50 hover:text-primary-600 transition-colors flex items-center gap-3;
+}
+
+.nav-item.active {
+  @apply bg-primary-50 text-primary-600 font-semibold;
+}
+
+.nav-item.disabled {
+  @apply text-slate-400 cursor-not-allowed hover:bg-transparent;
+}
+
+.nav-section {
+  @apply px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider;
+}
+
+.main-content {
+  @apply flex-1 overflow-y-auto;
+}
+
+.top-bar {
+  @apply h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6;
+}
+
+.user-menu {
+  @apply relative;
+}
+
+.dropdown {
+  @apply absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-50;
+}
+
+.dropdown-item {
+  @apply w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2;
+}
+
+.upload-zone {
+  @apply border-2 border-dashed border-slate-300 rounded-xl p-8 text-center transition-all duration-200 hover:border-primary-400 hover:bg-primary-50;
+}
+
+.upload-zone.active {
+  @apply border-primary-500 bg-primary-50;
+}
+
+.progress-ring {
+  @apply relative inline-block;
+}
+
+.stage-badge {
+  @apply px-2 py-0.5 rounded text-xs font-medium;
+}
+
+.field-row {
+  @apply grid grid-cols-1 md:grid-cols-3 gap-4 mb-4;
+}
+
+.field-label {
+  @apply label;
+}
+
+.field-value {
+  @apply px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-900;
+}
+
+.field-confidence {
+  @apply text-xs text-slate-500 mt-1;
+}
+
+.field-corrected {
+  @apply bg-warning-50 border-warning-500;
+}
+
+.flag-card {
+  @apply card p-4 mb-3 border-l-4;
+}
+
+.flag-critical { @apply border-l-danger-500; }
+.flag-high { @apply border-l-danger-500; }
+.flag-medium { @apply border-l-warning-500; }
+.flag-low { @apply border-l-primary-500; }
+
+.flag-header {
+  @apply flex items-center justify-between mb-2;
+}
+
+.flag-title {
+  @apply font-medium text-slate-900;
+}
+
+.flag-severity {
+  @apply badge;
+}
+
+.flag-details {
+  @apply text-sm text-slate-600 mt-2 p-3 bg-slate-50 rounded-lg;
+}
+
+.split-view {
+  @apply grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-200px)] overflow-hidden;
+}
+
+.split-pane {
+  @apply overflow-auto p-4;
+}
+
+.split-resizer {
+  @apply w-1 bg-slate-200 cursor-col-resize hover:bg-primary-300 transition-colors;
+}
+
+.toolbar {
+  @apply flex flex-wrap items-center gap-3 p-4 border-b border-slate-200 bg-slate-50;
+}
+
+.toolbar-group {
+  @apply flex items-center gap-2;
+}
+
+.dialog-overlay {
+  @apply fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4;
+}
+
+.dialog-content {
+  @apply bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden;
+}
+
+.dialog-header {
+  @apply px-6 py-4 border-b border-slate-200 flex items-center justify-between;
+}
+
+.dialog-title {
+  @apply text-lg font-semibold text-slate-900;
+}
+
+.dialog-body {
+  @apply p-6 overflow-y-auto max-h-[60vh];
+}
+
+.dialog-footer {
+  @apply px-6 py-4 border-t border-slate-200 flex justify-end gap-3;
+}
+
+.empty-state {
+  @apply text-center py-12 text-slate-500;
+}
+
+.empty-state-icon {
+  @apply mx-auto mb-4 text-slate-300;
+}

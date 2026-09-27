@@ -75,7 +75,7 @@ def three_way_match(self, document_id: str):
         try:
             doc = session.get(Document, document_id)
             if not doc:
-                logger.error(f"Document {document_id} not found")
+                logger.warning(f"Document {document_id} not found, skipping")
                 return {"status": "error", "reason": "document_not_found"}
 
             # Get extracted fields

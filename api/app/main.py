@@ -44,6 +44,14 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
 )
 
+# Final safety net middleware.
+# NOTE: this must be added BEFORE CORSMiddleware. Starlette executes the
+# most-recently-added middleware outermost, so adding CORS last keeps it
+# outermost and guarantees CORS headers are attached even to 500 responses
+# produced by this handler. Otherwise browsers report a CORS error instead
+# of the real status code.
+app.add_middleware(ExceptionMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -51,9 +59,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Final safety net middleware
-app.add_middleware(ExceptionMiddleware)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

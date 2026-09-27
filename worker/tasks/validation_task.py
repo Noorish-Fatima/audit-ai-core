@@ -70,6 +70,11 @@ def validate_critical_fields(self, document_id: str):
 
     with SyncSessionLocal() as session:
         try:
+            doc = session.get(Document, document_id)
+            if not doc:
+                logger.warning(f"Document {document_id} not found, skipping")
+                return {"status": "skipped", "reason": "document_not_found"}
+
             # Update session stage
             _update_session(session, document_id, "quality_gate", 55, "Validating critical fields and normalizing vendor")
 
@@ -83,7 +88,6 @@ def validate_critical_fields(self, document_id: str):
                     failed_fields.append(field)
 
             if failed_fields:
-                doc = session.get(Document, document_id)
                 doc.status = DocumentStatus.review
 
                 log = AuditLog(
@@ -156,6 +160,11 @@ def check_duplicates(self, document_id: str):
 
     with SyncSessionLocal() as session:
         try:
+            doc = session.get(Document, document_id)
+            if not doc:
+                logger.warning(f"Document {document_id} not found, skipping")
+                return {"status": "skipped", "reason": "document_not_found"}
+
             _update_session(session, document_id, "duplicate_check", 60, "Checking for duplicate invoices")
             
             vendor_name, _ = get_field_value(session, document_id, "vendor_name")
@@ -203,7 +212,6 @@ def check_duplicates(self, document_id: str):
                         logger.info(f"Duplicate flag already exists for {document_id} vs {dup_doc_id}")
                         return
 
-                    doc = session.get(Document, document_id)
                     doc.status = DocumentStatus.duplicate
 
                     flag = DuplicateFlag(
@@ -264,7 +272,6 @@ def check_duplicates(self, document_id: str):
                         logger.info(f"Duplicate flag already exists for {document_id} vs {dup_doc_id}")
                         return
 
-                    doc = session.get(Document, document_id)
                     doc.status = DocumentStatus.duplicate
 
                     flag = DuplicateFlag(
@@ -307,7 +314,7 @@ def evaluate_rules(self, document_id: str):
             # 1. Setup Data
             doc = session.get(Document, document_id)
             if not doc:
-                logger.error(f"Document {document_id} not found")
+                logger.warning(f"Document {document_id} not found, skipping")
                 return
 
             # Flatten extracted fields into a dict

@@ -1,0 +1,24 @@
+{
+  "name": "audit-ai",
+  "version": "1.0.0",
+  "description": "Document Intelligence Platform - A monorepo for processing, analyzing, and extracting insights from documents using AI.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Noorish-Fatima/audit-ai-core.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Noorish-Fatima/audit-ai-core/issues"
+  },
+  "homepage": "https://github.com/Noorish-Fatima/audit-ai-core#readme"
+}

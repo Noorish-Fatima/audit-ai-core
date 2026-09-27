@@ -366,6 +366,91 @@ async def get_document(
     }
 
 
+@router.get("/{document_id}/review")
+async def get_document_review(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Get review data for a document: fraud flags, rule violations, duplicates.
+
+    Powers the review panels on the document detail page (the reason a
+    document is sitting in review/flagged/duplicate status).
+    """
+    from app.models.rule import Rule
+
+    document = (await db.execute(
+        select(Document).where(Document.id == document_id)
+    )).scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    fraud_flags = (await db.execute(
+        select(FraudFlag)
+        .where(FraudFlag.document_id == document_id)
+        .order_by(FraudFlag.created_at)
+    )).scalars().all()
+
+    violations = (await db.execute(
+        select(RuleViolation)
+        .options(selectinload(RuleViolation.rule))
+        .where(RuleViolation.document_id == document_id)
+        .order_by(RuleViolation.created_at)
+    )).scalars().all()
+
+    duplicates = (await db.execute(
+        select(DuplicateFlag)
+        .where(DuplicateFlag.document_id == document_id)
+        .order_by(DuplicateFlag.created_at)
+    )).scalars().all()
+
+    def enum_value(v):
+        return v.value if hasattr(v, "value") else v
+
+    violation_payloads = []
+    for v in violations:
+        rule_name = v.rule.name if v.rule else None
+        details = dict(v.details or {})
+        # Backfill rule_name so the frontend can render it even for older rows
+        # written before details included it.
+        details.setdefault("rule_name", rule_name or "Rule Violation")
+        violation_payloads.append({
+            "id": str(v.id),
+            "rule_id": str(v.rule_id) if v.rule_id else None,
+            "rule_name": rule_name,
+            "details": details,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+        })
+
+    return {
+        "document_id": str(document.id),
+        "status": document.status.value,
+        "total_pages": len(document.normalized_image_paths or []) or 1,
+        "fraud_flags": [
+            {
+                "id": str(f.id),
+                "flag_type": enum_value(f.flag_type),
+                "severity": enum_value(f.severity),
+                "details": f.details,
+                "created_at": f.created_at.isoformat() if f.created_at else None,
+            }
+            for f in fraud_flags
+        ],
+        "rule_violations": violation_payloads,
+        "duplicate_flags": [
+            {
+                "id": str(d.id),
+                "duplicate_of_document_id": str(d.duplicate_of_document_id),
+                "match_type": enum_value(d.match_type),
+                "confidence_score": d.confidence_score,
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in duplicates
+        ],
+    }
+
+
 @router.get("")
 async def list_documents(
     status: Optional[str] = Query(None, description="Filter by document status"),
@@ -388,11 +473,19 @@ async def list_documents(
     query = select(Document)
     
     if status:
+        # Accept single ("pending") or comma-separated ("review,flagged") values.
+        raw_values = [s.strip() for s in status.split(",") if s.strip()]
         try:
-            status_enum = DocumentStatus(status)
-            query = query.where(Document.status == status_enum)
+            status_enums = [DocumentStatus(s) for s in raw_values]
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+        # Cast to text: the column is VARCHAR in Postgres while the model
+        # declares a native enum type, so a direct enum comparison raises
+        # "operator does not exist: character varying = document_status_enum".
+        # Same pattern already used by get_review_queue below.
+        query = query.where(
+            Document.status.cast(String).in_([s.value for s in status_enums])
+        )
     
     if uploaded_by:
         query = query.where(Document.uploaded_by == uploaded_by)
