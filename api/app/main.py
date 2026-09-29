@@ -5,9 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.config import Settings, settings
-from app.tier_config import feature_enabled, register_tier_routes
+from app.config import settings
+from app.logging_config import configure_logging
+from app.tier_config import register_tier_routes
 from app.db.session import init_db, close_db
+
+configure_logging()
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    """Bind a request_id to every structured log line for this request."""
+
+    async def dispatch(self, request: Request, call_next):
+        from app.logging_config import bind_context, clear_context, new_request_id
+
+        request_id = request.headers.get("X-Request-ID") or new_request_id()
+        bind_context(request_id=request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            clear_context()
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+
+# Added last so it runs outermost: the ID is bound before anything else
+# logs, including the exception safety net below CORS.
+app.add_middleware(RequestContextMiddleware)
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler - never expose stack traces to clients."""
@@ -77,7 +101,32 @@ async def health_check():
 
 @app.get("/health/ready", tags=["health"])
 async def readiness_check():
-    return {"status": "ready", "service": "api"}
+    """Ready only if DB and Redis are both reachable, else 503."""
+    checks = {}
+    try:
+        from sqlalchemy import text
+        from app.db.session import engine
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["db"] = "ok"
+    except Exception as exc:
+        logger.exception(f"Readiness DB check failed: {exc}")
+        checks["db"] = "error"
+    try:
+        import redis.asyncio as redis
+        client = redis.from_url(settings.REDIS_URL, socket_connect_timeout=3)
+        await client.ping()
+        await client.aclose()
+        checks["redis"] = "ok"
+    except Exception as exc:
+        logger.exception(f"Readiness Redis check failed: {exc}")
+        checks["redis"] = "error"
+    if all(v == "ok" for v in checks.values()):
+        return {"status": "ready", "service": "api", "checks": checks}
+    return JSONResponse(
+        status_code=503,
+        content={"status": "not_ready", "service": "api", "checks": checks},
+    )
 
 
 @app.get("/health/live", tags=["health"])
@@ -108,5 +157,4 @@ app.include_router(reporting.router, prefix=settings.API_PREFIX, tags=["reportin
 app.include_router(purchase_orders.router, prefix=settings.API_PREFIX, tags=["purchase-orders"])
 
 # Tier info endpoint (always available)
-from app.tier_config.tiers import register_tier_routes
 register_tier_routes(app)

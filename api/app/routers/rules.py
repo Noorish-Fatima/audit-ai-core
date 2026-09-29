@@ -1,12 +1,12 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
 from app.dependencies.auth import get_current_user, require_role
-from app.models.user import User, UserRole
+from app.models.user import UserRole
 from app.models.rule import Rule, RuleSeverity
 from app.tier_config.tiers import verify_feature
 
@@ -21,8 +21,7 @@ class RuleCondition(BaseModel):
     and_: Optional[List["RuleCondition"]] = Field(None, alias="and")
     or_: Optional[List["RuleCondition"]] = Field(None, alias="or")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class RuleCreate(BaseModel):
     name: str

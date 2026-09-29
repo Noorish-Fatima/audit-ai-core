@@ -1,16 +1,14 @@
 from pathlib import Path
 from typing import Optional, List
 from datetime import datetime, timezone
-from decimal import Decimal
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, case, and_, or_, String
+from sqlalchemy import select, func, desc, String
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 import uuid
 import os
-import shutil
 
 from app.tier_config import settings
 from app.db.session import get_session
@@ -18,7 +16,7 @@ from app.dependencies.auth import get_current_user, require_role
 from app.models.document import Document, DocumentSession, DocumentStatus
 from app.models.user import User, UserRole
 from app.models.extracted_field import ExtractedField
-from app.models.flag import FraudFlag, DuplicateFlag, DuplicateMatchType
+from app.models.flag import FraudFlag, DuplicateFlag
 from app.models.rule import RuleViolation
 from app.models.audit_log import AuditLog
 
@@ -184,7 +182,7 @@ async def get_review_queue(
         try:
             review_statuses = [DocumentStatus(s) for s in status]
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid status in list")
+            raise HTTPException(status_code=400, detail="Invalid status in list")
 
     # Convert enum values to strings for proper PostgreSQL enum comparison
     status_values = [s.value for s in review_statuses]
@@ -212,7 +210,6 @@ async def get_review_queue(
         )
         fields = fields_result.scalars().all()
         confidences = {f.field_name: f.confidence_score for f in fields}
-        avg_confidence = sum(confidences.values()) / len(confidences) if confidences else 0.0
         min_confidence = min(confidences.values()) if confidences else 0.0
 
         # Get fraud flags
@@ -377,7 +374,6 @@ async def get_document_review(
     Powers the review panels on the document detail page (the reason a
     document is sitting in review/flagged/duplicate status).
     """
-    from app.models.rule import Rule
 
     document = (await db.execute(
         select(Document).where(Document.id == document_id)
@@ -575,99 +571,6 @@ async def serve_document_file(
         media_type=media_type,
         filename=document.original_filename,
     )
-
-    # Join with extracted fields for confidence scores
-    # Join with fraud_flags for severity
-    # Join with rule_violations for count
-    # Join with duplicate_flags for count
-
-    # We'll compute priority in Python for flexibility
-    result = await db.execute(query.order_by(desc(Document.created_at)))
-    documents = result.scalars().all()
-
-    # Compute priority scores
-    doc_data = []
-    for doc in documents:
-        # Get confidence scores for critical fields
-        fields_result = await db.execute(
-            select(ExtractedField).where(
-                ExtractedField.document_id == doc.id,
-                ExtractedField.field_name.in_(["invoice_number", "vendor_name", "total_amount", "invoice_date"])
-            )
-        )
-        fields = fields_result.scalars().all()
-        confidences = {f.field_name: f.confidence_score for f in fields}
-        avg_confidence = sum(confidences.values()) / len(confidences) if confidences else 0.0
-        min_confidence = min(confidences.values()) if confidences else 0.0
-
-        # Get fraud flags
-        fraud_result = await db.execute(
-            select(FraudFlag).where(FraudFlag.document_id == doc.id)
-        )
-        fraud_flags = fraud_result.scalars().all()
-        max_fraud_severity = 0
-        for f in fraud_flags:
-            sev_map = {"critical": 4, "high": 3, "medium": 2, "low": 1}
-            max_fraud_severity = max(max_fraud_severity, sev_map.get(f.severity, 0))
-
-        # Get rule violations
-        violations_result = await db.execute(
-            select(RuleViolation).where(RuleViolation.document_id == doc.id)
-        )
-        violation_count = len(violations_result.scalars().all())
-
-        # Get duplicate flags
-        dup_result = await db.execute(
-            select(DuplicateFlag).where(DuplicateFlag.document_id == doc.id)
-        )
-        duplicate_count = len(dup_result.scalars().all())
-
-        # Priority score: lower = more urgent
-        # Base priority from status
-        status_priority = {"flagged": 0, "review": 1, "duplicate": 2}.get(doc.status.value, 3)
-        
-        # Adjust by severity and confidence
-        priority_score = (
-            status_priority * 100 +
-            (4 - max_fraud_severity) * 20 +
-            (1 - min_confidence) * 50 +
-            violation_count * 10 +
-            duplicate_count * 15
-        )
-
-        doc_data.append({
-            "id": doc.id,
-            "original_filename": doc.original_filename,
-            "mime_type": doc.mime_type,
-            "file_size": doc.file_size,
-            "status": doc.status.value,
-            "uploaded_by": doc.uploaded_by,
-            "created_at": doc.created_at.isoformat() if doc.created_at else None,
-            "priority_score": round(priority_score, 2),
-            "min_confidence": round(min_confidence, 2),
-            "max_fraud_severity": max_fraud_severity,
-            "violation_count": violation_count,
-            "duplicate_count": duplicate_count,
-            "fraud_flag_types": [f.flag_type.value for f in fraud_flags],
-        })
-
-    # Sort by priority (lower = more urgent)
-    doc_data.sort(key=lambda x: x["priority_score"])
-
-    # Paginate
-    total = len(doc_data)
-    start = (page - 1) * page_size
-    end = start + page_size
-    items = doc_data[start:end]
-
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size,
-    }
-
 
 class FieldCorrection(BaseModel):
     field_name: str

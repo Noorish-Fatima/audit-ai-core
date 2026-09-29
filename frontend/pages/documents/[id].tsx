@@ -77,7 +77,7 @@ const saveEdit = async (fieldName: string) => {
           <div className="text-center">
             <svg className="mx-auto w-16 h-16 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
             <h2 className="text-xl font-semibold text-slate-900 mt-4">Document Not Found</h2>
-            <p className="text-slate-600 mt-2">The document you're looking for doesn't exist or has been removed.</p>
+            <p className="text-slate-600 mt-2">The document you&apos;re looking for doesn&apos;t exist or has been removed.</p>
             <button onClick={() => router.push('/documents')} className="btn-primary mt-6">Back to Documents</button>
           </div>
         </div>

@@ -4,7 +4,7 @@ from typing import Optional, List
 import logging
 
 from celery import shared_task
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
 
 from app.tier_config.tiers import feature_enabled

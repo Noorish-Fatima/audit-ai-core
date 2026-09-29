@@ -1,21 +1,17 @@
 from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Optional, List
+from typing import Optional
 import logging
 
-from celery import shared_task, chain, group
-from sqlalchemy import select, func, and_, or_
+from celery import shared_task, chain
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.tier_config.tiers import feature_enabled
 from app.db.session import SyncSessionLocal
 from app.models.document import Document, DocumentSession, DocumentStatus
 from app.models.extracted_field import ExtractedField
-from app.models.flag import FraudFlag, DuplicateFlag, DuplicateMatchType
+from app.models.flag import FraudFlag, DuplicateFlag
 from app.models.rule import RuleViolation
 from app.models.audit_log import AuditLog
-from app.models.vendor import Vendor
-from app.models.user import User, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +283,6 @@ def build_document_pipeline(document_id: str):
     check_duplicates(60) → evaluate_rules(65) → finalize_validation(70) → 
     check_fraud_patterns(75) → three_way_match(80) → route_decision(90) → audit_log_commit(100)
     """
-    from celery import chain
 
     # Import task signatures
     from worker.tasks.ocr_task import ocr_normalize

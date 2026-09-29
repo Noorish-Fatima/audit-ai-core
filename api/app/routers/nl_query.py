@@ -53,7 +53,6 @@ async def get_nl_query(
     current_user=Depends(get_current_user),
 ):
     """Re-view a past NL query (own history only)."""
-    from sqlalchemy import select
     from app.models.query_log import NLQueryLog
 
     log = await db.get(NLQueryLog, query_id)

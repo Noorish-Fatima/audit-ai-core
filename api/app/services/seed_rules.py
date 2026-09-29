@@ -1,8 +1,6 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 from app.db.session import SyncSessionLocal
 from app.models.rule import Rule, RuleSeverity
-from app.tier_config.tiers import TIER
 
 def seed_default_rules():
     """Seeds the rules table with default examples if empty."""

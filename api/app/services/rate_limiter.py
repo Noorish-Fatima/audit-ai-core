@@ -21,7 +21,13 @@ class RateLimiter:
 
     async def close(self):
         if self.redis_client:
-            await self.redis_client.close()
+            # redis-py 5.x renamed close() -> aclose(); support both so the
+            # deprecation warning doesn't spam test output.
+            aclose = getattr(self.redis_client, "aclose", None)
+            if callable(aclose):
+                await aclose()
+            else:  # pragma: no cover - redis <5 fallback
+                await self.redis_client.close()
             self.redis_client = None
 
     async def check_rate_limit(

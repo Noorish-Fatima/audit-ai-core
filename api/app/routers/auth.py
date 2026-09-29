@@ -2,24 +2,21 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Body
 from fastapi.security import HTTPBearer
-from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.tier_config import settings
 from app.db.session import get_session
 from app.services.auth_service import AuthService
 from app.services.rate_limiter import login_rate_limit, add_rate_limit_headers
-from app.dependencies.auth import get_current_user, get_current_user_optional, require_role
+from app.dependencies.auth import get_current_user, get_current_user_optional
 from app.schemas.auth import (
     UserRegister,
     UserLogin,
     TokenResponse,
-    RefreshTokenRequest,
     AuthResponse,
     UserResponse,
     MessageResponse,
 )
-from app.models.user import UserRole
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])

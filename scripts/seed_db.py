@@ -64,9 +64,9 @@ async def create_admin_user() -> None:
         await session.commit()
         
         print("Admin user created successfully!")
-        print(f"  Email: admin@audit-ai.local")
-        print(f"  Password: admin123")
-        print(f"  Role: admin")
+        print("  Email: admin@audit-ai.local")
+        print("  Password: admin123")
+        print("  Role: admin")
         print()
         print("⚠️  IMPORTANT: Change the default password in production!")
         

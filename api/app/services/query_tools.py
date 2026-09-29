@@ -6,15 +6,14 @@ import logging
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
-from sqlalchemy import select, func, and_, or_, desc
+from sqlalchemy import select, and_, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.document import Document, DocumentStatus
 from app.models.extracted_field import ExtractedField
-from app.models.flag import FraudFlag, DuplicateFlag, FraudFlagType
+from app.models.flag import FraudFlag
 from app.models.vendor import Vendor
-from app.models.audit_log import AuditLog
 
 logger = logging.getLogger(__name__)
 

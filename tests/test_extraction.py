@@ -2,23 +2,10 @@
 Tests for invoice field extraction with synthetic invoice variants.
 """
 import pytest
-import pytest_asyncio
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
-import json
-import uuid
 
 from api.app.schemas.extraction import ExtractedInvoiceFields, LineItem
-from api.app.agents.extraction_graph import (
-    text_model_node,
-    confidence_check_node,
-    vision_model_node,
-    merge_node,
-    route_after_confidence_check,
-    save_extracted_fields,
-    ExtractionState,
-)
 
 
 class TestExtractedInvoiceFields:
@@ -142,7 +129,6 @@ class TestExtractedInvoiceFields:
     
     def test_confidence_check_routing(self):
         """Test confidence check routing logic."""
-        from app.agents.extraction_graph import confidence_check_node
         
         # Test with low confidence critical field
         extracted = {
@@ -154,14 +140,11 @@ class TestExtractedInvoiceFields:
             "total_amount_confidence": 0.9,
         }
         
-        state = {"extracted_fields": extracted}
         # This would be called in async context, testing logic directly
-        critical_fields = ["invoice_number", "vendor_name", "total_amount"]
-        low_confidence = []
         null_fields = []
+        low_confidence = []
         
         for field in ["invoice_number", "vendor_name", "total_amount"]:
-            confidence_key = f"{field}_confidence"
             value = {"invoice_number": "INV-001", "vendor_name": "Test", "total_amount": 100.0}.get(field)
             confidence = extracted.get(f"{field}_confidence", 0.0)
             
@@ -184,7 +167,6 @@ class TestExtractionGraphNodes:
         """Test confidence check with no extracted fields."""
         from app.agents.extraction_graph import confidence_check_node
         
-        state = {"document_id": "test-123", "extracted_fields": None}
         result = await confidence_check_node({"document_id": "test-123", "extracted_fields": None})
         
         assert result["confidence_check_result"]["needs_vision"] is True
@@ -314,9 +296,7 @@ class TestSyntheticInvoiceVariants:
     @pytest.mark.asyncio
     async def test_typed_pdf_extracts_via_text_model_only(self):
         """Test: Clean typed PDF extracts via text model only (no vision fallback)."""
-        from app.agents.extraction_graph import confidence_check_node, merge_node
-        from unittest.mock import AsyncMock, MagicMock, patch
-        import json
+        from unittest.mock import AsyncMock, patch
         
         # Mock the text_model_node since it requires Groq API
         with patch('app.agents.extraction_graph.text_model_node') as mock_text_model:
@@ -397,22 +377,11 @@ class TestSyntheticInvoiceVariants:
     @pytest.mark.asyncio
     async def test_scanned_image_fallbacks_to_vision(self):
         """Test: Low-quality scan correctly falls back to vision model."""
-        from app.agents.extraction_graph import confidence_check_node, vision_model_node, merge_node
-        from unittest.mock import patch, AsyncMock, MagicMock
-        import json
+        from app.agents.extraction_graph import confidence_check_node
         
         # Low confidence extraction from text model
-        low_confidence_extracted = {
-            "invoice_number": "INV-001",
-            "vendor_name": None,  # Could not extract
-            "total_amount": 100.00,
-            "invoice_number_confidence": 0.9,
-            "vendor_name_confidence": 0.3,  # Low confidence
-            "total_amount_confidence": 0.9,
-        }
         
         # Confidence check should trigger vision model
-        state = {"document_id": "test-123", "extracted_fields": {"vendor_name": None, "vendor_name_confidence": 0.3}}
         result = await confidence_check_node({"document_id": "test", "extracted_fields": {"vendor_name": None, "vendor_name_confidence": 0.3}})
         
         assert result["confidence_check_result"]["needs_vision"] is True
@@ -473,10 +442,8 @@ class TestExtractionTask:
     def test_retry_logic_exponential_backoff(self):
         """Test retry logic with exponential backoff."""
         from worker.tasks.extraction_task import extract_invoice_fields
-        from celery.exceptions import MaxRetriesExceededError
         
         # Verify retry configuration
-        from worker.tasks.extraction_task import extract_invoice_fields
         assert extract_invoice_fields.max_retries == 3
         assert extract_invoice_fields.default_retry_delay == 60
 

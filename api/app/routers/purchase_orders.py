@@ -5,11 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.db.session import get_session
 from app.dependencies.auth import get_current_user, require_role
-from app.models.user import User, UserRole
+from app.models.user import UserRole
 from app.models.purchase_order import PurchaseOrder, GoodsReceipt
 from app.models.vendor import Vendor
 from app.tier_config.tiers import verify_feature
@@ -42,8 +41,7 @@ class PurchaseOrderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GoodsReceiptCreate(BaseModel):
@@ -59,8 +57,7 @@ class GoodsReceiptResponse(BaseModel):
     received_at: datetime
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/health", include_in_schema=False)

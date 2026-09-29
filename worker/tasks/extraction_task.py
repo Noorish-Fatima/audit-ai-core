@@ -5,8 +5,6 @@ from celery import shared_task
 import logging
 import uuid
 from datetime import datetime
-from decimal import Decimal
-import json
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -32,13 +30,7 @@ def extract_invoice_fields(self, document_id: str) -> dict:
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import select
     from app.models.document import Document, DocumentStatus, DocumentSession
-    from app.models.extracted_field import ExtractedField, ExtractionMethod
-    from app.models.audit_log import AuditLog
-    import uuid
     import logging
-    from datetime import datetime
-    from decimal import Decimal
-    import json
     import asyncio
 
     logger = logging.getLogger(__name__)
@@ -88,7 +80,7 @@ def extract_invoice_fields(self, document_id: str) -> dict:
         db.commit()
 
         # Run the extraction graph
-        from app.agents.extraction_graph import extraction_graph, ExtractionState
+        from app.agents.extraction_graph import extraction_graph
 
         # Prepare initial state
         initial_state = {

@@ -4,12 +4,12 @@ from typing import Optional
 import logging
 
 from celery import shared_task
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.tier_config.tiers import feature_enabled
 from app.db.session import SyncSessionLocal
-from app.models.document import Document, DocumentSession, DocumentStatus
+from app.models.document import Document, DocumentSession
 from app.models.purchase_order import PurchaseOrder, GoodsReceipt
 from app.models.extracted_field import ExtractedField
 from app.models.rule import RuleViolation

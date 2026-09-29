@@ -2,9 +2,9 @@
 Constrained NL Query Agent using LangGraph.
 No raw SQL generation - only whitelisted parameterized function calls.
 """
-from typing import Literal, Optional
+from typing import Optional
 from enum import Enum
-from datetime import date, datetime
+from datetime import date
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, END
@@ -155,8 +155,6 @@ async def argument_extraction_node(state: QueryState) -> QueryState:
     if intent.intent == IntentCategory.unsupported:
         state["error"] = "Question category not supported"
         return state
-    
-    question = state["question"]
     
     # Extract common date range - default to current year if not specified
     today = date.today()
@@ -339,7 +337,7 @@ async def response_formatter_node(state: QueryState) -> QueryState:
     elif intent.intent == IntentCategory.top_vendors:
         r = tool_result
         if not r:
-            state["answer"] = f"No vendor spend data found for the period."
+            state["answer"] = "No vendor spend data found for the period."
         else:
             vendor_list = ", ".join([f"{v['vendor']} (${v['total_spend']})" for v in r[:5]])
             state["answer"] = f"Top vendors by spend: {vendor_list}" + (f" and {len(r) - 5} more" if len(r) > 5 else "") + f" from {default_from} to {default_to}."

@@ -219,3 +219,44 @@ docker-compose run --rm api python scripts/verify_system.py
 ## License
 
 MIT License - See LICENSE file for details.
+
+## Deploying to a new client
+
+### 1. Environment variables
+
+Copy `.env.example` to `.env` and set every value (never commit `.env`):
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `SECRET_KEY` | yes | JWT signing key. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. A unique value per client. |
+| `TIER` | yes | `basic`, `standard`, or `premium` (see below). Defaults to `basic`. |
+| `GROQ_API_KEY` | yes | LLM extraction provider. Without a valid key, invoice field extraction fails and documents land in `flagged`. |
+| `GEMINI_API_KEY` | yes | Vision fallback for low-confidence extractions. Same consequence if missing/invalid. |
+
+Postgres/Redis URLs default to the compose services; override only for external managed instances.
+
+### 2. Choosing TIER
+
+| Tier | Features |
+|------|----------|
+| `basic` | Upload → OCR → extract → validate pipeline only. No rules engine, NL query, fraud detection, 3-way match, approval routing, or reporting. |
+| `standard` | Basic + rules engine, NL query, fraud detection, reporting. |
+| `premium` | Everything, including 3-way match and approval routing. |
+
+Tier is read once at API startup (`TIER` env → `GET /system/tier`). Disabled backend routes return **403** ("upgrade your plan"); the frontend hides gated nav items and renders its 404 page on direct navigation. Changing tier = edit `.env` + `docker compose up -d api` (frontend needs no rebuild; it reads the tier at runtime).
+
+### 3. Deploy and verify
+
+```bash
+docker compose up --build -d
+pip install requests Pillow               # verify-script deps (host-side only)
+python3 scripts/verify_system.py            # full end-to-end check, exits 0 on PASS
+# or: python3 scripts/verify_system.py --timeout 900 --api-url http://<host>:8000
+```
+
+`verify_system.py` checks `/health`, `/health/ready` (real DB+Redis checks, 503 otherwise),
+`/health/live`, and the frontend health endpoint, then registers a throwaway user, uploads a
+synthetic invoice PNG, polls until a terminal status (`verified`/`review`/`flagged`/`duplicate`),
+and asserts extracted fields were produced. **Do not hand over to a client unless it exits 0.**
+Typical full run takes 2–8 minutes depending on LLM latency; the upload alone proves the
+Celery worker is alive (no separate worker check needed).

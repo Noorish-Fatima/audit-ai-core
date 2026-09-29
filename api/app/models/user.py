@@ -1,7 +1,6 @@
 import enum
 from datetime import datetime
-from typing import Optional
-from sqlalchemy import String, Boolean, ForeignKey, Index, UniqueConstraint, DateTime
+from sqlalchemy import String, Boolean, ForeignKey, Index, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

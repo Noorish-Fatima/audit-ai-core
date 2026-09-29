@@ -1,6 +1,5 @@
 from typing import Dict, Any
-from fastapi import FastAPI, APIRouter, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, APIRouter, HTTPException
 
 from app.config import settings
 

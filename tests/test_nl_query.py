@@ -2,24 +2,20 @@
 Tests for NL query agent - whitelisted tools and unsupported question handling.
 """
 import pytest
-from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
-from enum import Enum
 
 
-# Mock all models before importing
-import sys
-mock_models = MagicMock()
-sys.modules['app.models.document'] = mock_models
-sys.modules['app.models.extracted_field'] = mock_models
-sys.modules['app.models.flag'] = mock_models
-sys.modules['app.models.vendor'] = mock_models
-sys.modules['app.models.user'] = mock_models
-sys.modules['app.models.rule'] = mock_models
-sys.modules['app.models.query_log'] = mock_models
-sys.modules['app.db.session'] = mock_models
+# NOTE: do NOT stub sys.modules for app.models.* / app.db.session here.
+# A previous version of this file replaced those entries with a global
+# MagicMock, which poisoned every other test module imported in the same
+# pytest process (e.g. worker.tasks.fraud_task does a lazy
+# `from app.models.rule import Rule` at call time and would then receive
+# the MagicMock, breaking SQLAlchemy select()). The graph imports below
+# work fine against the real models — DB access in run_nl_query is patched
+# per-test with SyncSessionLocal mocks, and no test makes live LLM calls
+# (intent classification is keyword-based).
 
 
 class MockVendor:
@@ -100,28 +96,13 @@ class AsyncMockScalars:
             return None
 
 
-# Now import after mocking
-from app.services.query_tools import (
-    get_vendor_spend,
-    get_avg_tax_rate,
-    list_flagged_documents,
-    get_invoice_summary,
-    get_top_vendors_by_spend,
-)
 from app.agents.nl_query_graph import (
     run_nl_query,
     intent_classifier_node,
     argument_extraction_node,
-    tool_execution_node,
     response_formatter_node,
     IntentCategory,
-    QueryState,
 )
-from app.models.document import Document, DocumentStatus
-from app.models.extracted_field import ExtractedField
-from app.models.flag import FraudFlag, FraudFlagType
-from app.models.vendor import Vendor
-from app.models.user import User, UserRole
 
 
 class TestIntentClassifier:
@@ -324,7 +305,9 @@ class TestUnsupportedQuestionHonesty:
     async def test_unsupported_question_returns_honest_answer(self):
         """Test that unsupported questions get honest 'cannot answer' response."""
         with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session:
-            mock_session.return_value.__enter__.return_value = AsyncMock()
+            # Sync session mock: add()/commit() are sync in production, so a
+            # MagicMock (not AsyncMock) avoids "coroutine never awaited" noise.
+            mock_session.return_value.__enter__.return_value = MagicMock()
             
             result = await run_nl_query("What is the weather today?", str(uuid.uuid4()))
             
@@ -336,7 +319,7 @@ class TestUnsupportedQuestionHonesty:
     async def test_unsupported_does_not_hallucinate(self):
         """Test that unsupported questions don't hallucinate fake data."""
         with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session:
-            mock_session.return_value.__enter__.return_value = AsyncMock()
+            mock_session.return_value.__enter__.return_value = MagicMock()
             
             result = await run_nl_query("Predict next quarter's revenue", str(uuid.uuid4()))
             
@@ -353,7 +336,7 @@ class TestNLQueryIntegration:
         """Test full vendor spend query end-to-end."""
         # Test the full flow by mocking at the graph level - just verify intent and response
         with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session:
-            mock_db = AsyncMock()
+            mock_db = MagicMock()
             mock_session.return_value.__enter__.return_value = mock_db
             
             # Mock vendor lookup - the tool execution will try to query but we'll catch the error
@@ -377,7 +360,7 @@ class TestNLQueryIntegration:
     async def test_unsupported_honest_answer(self):
         """Test unsupported question gets honest response."""
         with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session:
-            mock_session.return_value.__enter__.return_value = AsyncMock()
+            mock_session.return_value.__enter__.return_value = MagicMock()
             
             result = await run_nl_query("What is the meaning of life?", str(uuid.uuid4()))
             

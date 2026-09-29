@@ -7,12 +7,11 @@ from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.schemas.extraction import ExtractedInvoiceFields, LineItem
+from app.schemas.extraction import ExtractedInvoiceFields
 from app.config import settings
 from app.db.session import sync_engine
 from app.models.document import Document, DocumentStatus, DocumentSession
-from app.models.extracted_field import ExtractedField, ExtractionMethod
-from app.db.session import get_session
+from app.models.extracted_field import ExtractedField
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select
 import uuid
@@ -20,7 +19,7 @@ import logging
 import asyncio
 import json
 import re
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -156,10 +155,12 @@ Do NOT use nested objects like {{"invoice_number": {{"value": "INV-123", "confid
             extracted_model = ExtractedInvoiceFields(**extracted_dict)
 
             if extracted_model.currency and not detected_currency:
-                logger.warning(f"Currency {extracted_model.currency} extracted by LLM but not detected in raw text for document {document_id}")
+                logger.warning(f"Currency {extracted_model.currency} extracted by LLM but not detected in raw text for document {document_id} - nulling (no-inference policy)")
+                extracted_model.currency = None
+                extracted_model.currency_confidence = 0.0
 
             logger.info(f"Text model extraction completed for document {document_id}")
-            return {"extracted_fields": extracted_model.model_dump()}
+            return {"extracted_fields": extracted_model.model_dump(mode="json")}
 
         except Exception as e:
             logger.warning(f"Text model extraction attempt {attempt + 1}/{max_attempts} failed for document {document_id}: {e}")
@@ -351,7 +352,6 @@ def decimal_default(obj):
 
 async def save_extracted_fields(state: ExtractionState) -> ExtractionState:
     """Save extracted fields to database and update document status/session."""
-    document_id = state["document_id"]
     final_fields = state.get("final_extracted_fields", {})
     extraction_method = final_fields.pop("extraction_method", "text_model")
 

@@ -1,10 +1,11 @@
 from celery import Celery
-from celery.signals import worker_ready, worker_shutdown
+from celery.signals import worker_ready, worker_shutdown, task_prerun, task_postrun
 import logging
 
 from app.config import settings
+from app.logging_config import configure_logging, bind_context, clear_context
 
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 celery_app = Celery(
@@ -48,6 +49,20 @@ def on_worker_ready(**kwargs):
 @worker_shutdown.connect
 def on_worker_shutdown(**kwargs):
     logger.info("Worker is shutting down")
+
+
+@task_prerun.connect
+def bind_task_context(task_id=None, task=None, args=None, **kwargs):
+    """Attach task_id (and document_id when it's the first arg) to all logs."""
+    context = {"task_id": task_id or getattr(task.request, "id", None)}
+    if args and isinstance(args[0], str):
+        context["document_id"] = args[0]
+    bind_context(**{k: v for k, v in context.items() if v})
+
+
+@task_postrun.connect
+def clear_task_context(**kwargs):
+    clear_context()
 
 
 @celery_app.task(name="health_check")

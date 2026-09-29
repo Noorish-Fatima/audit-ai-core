@@ -1,0 +1,9 @@
+# CI lint gate: fail on real defects (pyflakes) and hard runtime errors.
+# Deliberately NOT style rules (E501 etc.) — those get fixed opportunistically.
+[lint]
+select = ["F", "E9"]
+
+[lint.per-file-ignores]
+# SQLAlchemy resolves these quoted forward references via its class
+# registry at runtime; they are not real undefined names.
+"api/app/models/*.py" = ["F821"]

@@ -1,186 +1,166 @@
 #!/usr/bin/env python3
 """
-System verification script for Audit-AI.
-Checks that all services are running and healthy.
-"""
+One-command end-to-end verification for a deployed Audit-AI stack.
 
+Flow:
+  1. Health checks (api, readiness with DB+Redis, liveness, frontend)
+  2. Register a unique test user (or log in if it already exists)
+  3. Render a synthetic invoice PNG and upload it
+  4. Poll the document until a terminal status
+     (verified | review | flagged | duplicate)
+  5. Assert extracted fields were produced
+
+Exit 0 = PASS, 1 = FAIL. Use after every client deploy:
+
+    python3 scripts/verify_system.py [--api-url ...] [--timeout ...]
+"""
+import argparse
 import sys
 import time
-import argparse
-from typing import Dict, Tuple
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import uuid
+from datetime import datetime, timezone
+
+try:
+    import requests
+except ImportError:
+    print("FAIL - the 'requests' package is required: pip install requests")
+    sys.exit(2)
+
+TERMINAL_STATUSES = {"verified", "review", "flagged", "duplicate"}
+
+INVOICE_LINES = [
+    "HomeStore",
+    "6146 Honey Bluff Parkway",
+    "Calder, Michigan 49628",
+    "Invoice #INV-VERIFY-001",
+    "Date: 2024-11-02",
+    "Clamber Watch  1 x $100.00",
+    "Jacket         1 x $77.00",
+    "Subtotal: $177.00",
+    "Tax: $26.06",
+    "Grand Total: $203.06",
+    "Thank you for your order!",
+]
 
 
-SERVICES = {
-    "api": {
-        "url": "http://localhost:8000/health",
-        "expected_status": 200,
-        "timeout": 10,
-    },
-    "api_ready": {
-        "url": "http://localhost:8000/health/ready",
-        "expected_status": 200,
-        "timeout": 10,
-    },
-    "api_live": {
-        "url": "http://localhost:8000/health/live",
-        "expected_status": 200,
-        "timeout": 10,
-    },
-    "frontend": {
-        "url": "http://localhost:3000/api/health",
-        "expected_status": 200,
-        "timeout": 10,
-    },
-    "api_docs": {
-        "url": "http://localhost:8000/docs",
-        "expected_status": 200,
-        "timeout": 10,
-    },
-}
+def log(msg: str) -> None:
+    print(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] {msg}", flush=True)
 
 
-def create_session() -> requests.Session:
-    """Create a requests session with retry logic."""
-    session = requests.Session()
-    retry_strategy = Retry(
-        total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["HEAD", "GET", "OPTIONS"],
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
+def check(name: str, ok: bool, detail: str = "") -> bool:
+    print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f" - {detail}" if detail else ""), flush=True)
+    return ok
 
 
-def check_service(name: str, config: Dict, session: requests.Session) -> Tuple[bool, str]:
-    """Check a single service health endpoint."""
-    url = config["url"]
-    expected_status = config["expected_status"]
-    timeout = config["timeout"]
-    
-    try:
-        response = session.get(url, timeout=timeout)
-        if response.status_code == expected_status:
-            try:
-                data = response.json()
-                return True, f"OK - {data}"
-            except ValueError:
-                return True, f"OK - Status {response.status_code}"
-        else:
-            return False, f"FAIL - Status {response.status_code}, expected {expected_status}"
-    except requests.exceptions.ConnectionError:
-        return False, "FAIL - Connection refused"
-    except requests.exceptions.Timeout:
-        return False, f"FAIL - Timeout after {timeout}s"
-    except Exception as e:
-        return False, f"FAIL - {type(e).__name__}: {e}"
+def render_invoice_png(path: str) -> None:
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (900, 700), "white")
+    draw = ImageDraw.Draw(img)
+    # NOTE: fill="black" is required — Pillow >= 10 renders draw.text()
+    # with the default fill as invisible ink, which once produced a blank
+    # 3KB PNG that OCR'd to nothing and failed the whole verify run.
+    y = 40
+    for i, line in enumerate(INVOICE_LINES):
+        draw.text((60, y), line, fill="black")
+        y += 44 if i in (0, 3) else 34
+    img.save(path, format="PNG")
 
 
-def check_worker() -> Tuple[bool, str]:
-    """Check Celery worker via ping."""
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["docker", "exec", "audit-ai-worker", "celery", "-A", "worker.celery_app", "inspect", "ping"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        if result.returncode == 0 and "pong" in result.stdout.lower():
-            return True, f"OK - Worker responded: {result.stdout.strip()}"
-        else:
-            return False, f"FAIL - Worker ping failed: {result.stderr}"
-    except subprocess.TimeoutExpired:
-        return False, "FAIL - Worker ping timeout"
-    except FileNotFoundError:
-        return False, "FAIL - Docker not available"
-    except Exception as e:
-        return False, f"FAIL - {type(e).__name__}: {e}"
-
-
-def wait_for_services(max_wait: int = 120, interval: int = 5) -> bool:
-    """Wait for all services to become healthy."""
-    print(f"Waiting for services to become healthy (max {max_wait}s)...")
-    session = create_session()
-    start_time = time.time()
-    
-    while time.time() - start_time < max_wait:
-        all_healthy = True
-        for name, config in SERVICES.items():
-            healthy, msg = check_service(name, config, session)
-            if not healthy:
-                all_healthy = False
-                break
-        
-        if all_healthy:
-            # Also check worker
-            worker_healthy, worker_msg = check_worker()
-            if worker_healthy:
-                print("All services are healthy!")
-                return True
-            else:
-                all_healthy = False
-        
-        if not all_healthy:
-            elapsed = int(time.time() - start_time)
-            print(f"  [{elapsed}s] Waiting... ({interval}s)")
-            time.sleep(interval)
-    
-    return False
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Verify Audit-AI system health")
-    parser.add_argument("--wait", type=int, default=120, help="Max wait time for services (seconds)")
-    parser.add_argument("--interval", type=int, default=5, help="Check interval (seconds)")
-    parser.add_argument("--no-wait", action="store_true", help="Don't wait, just check once")
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Verify a deployed Audit-AI stack end to end")
+    parser.add_argument("--api-url", default="http://localhost:8000", help="API base URL")
+    parser.add_argument("--frontend-url", default="http://localhost:3000", help="Frontend base URL")
+    parser.add_argument("--timeout", type=int, default=600, help="Max seconds to wait for terminal status")
+    parser.add_argument("--poll-interval", type=int, default=10, help="Seconds between status polls")
     args = parser.parse_args()
-    
-    session = create_session()
-    
-    print("=" * 60)
-    print("Audit-AI System Verification")
-    print("=" * 60)
-    
-    if not args.no_wait:
-        if wait_for_services(args.wait, args.interval):
-            print("\n✓ All services verified successfully!")
-            return 0
-        else:
-            print(f"\n✗ Services did not become healthy within {args.wait}s")
-            # Fall through to show final status
-    
-    print("\nFinal Service Status:")
-    print("-" * 60)
-    
-    all_ok = True
-    for name, config in SERVICES.items():
-        healthy, msg = check_service(name, config, session)
-        status = "✓" if healthy else "✗"
-        print(f"  {status} {name:20s} - {msg}")
-        if not healthy:
-            all_ok = False
-    
-    # Check worker
-    worker_healthy, worker_msg = check_worker()
-    status = "✓" if worker_healthy else "✗"
-    print(f"  {status} {'worker':20s} - {worker_msg}")
-    if not worker_healthy:
-        all_ok = False
-    
-    print("-" * 60)
-    
-    if all_ok:
-        print("\n✓ All services are healthy!")
-        return 0
-    else:
-        print("\n✗ Some services are unhealthy!")
+
+    api = args.api_url.rstrip("/")
+    ok = True
+
+    # 1. Health checks
+    log("Step 1/4: health checks")
+    for name, url, want in [
+        ("api", api + "/health", 200),
+        ("readiness", api + "/health/ready", 200),
+        ("liveness", api + "/health/live", 200),
+        ("frontend", args.frontend_url.rstrip("/") + "/api/health", 200),
+    ]:
+        try:
+            r = requests.get(url, timeout=10)
+            body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            ok &= check(f"GET {name}", r.status_code == want, f"HTTP {r.status_code} {body}")
+        except Exception as e:
+            ok &= check(f"GET {name}", False, f"{type(e).__name__}: {e}")
+    if not ok:
+        log("RESULT: FAIL (services unhealthy)")
         return 1
+
+    # 2. Test user
+    log("Step 2/4: test user")
+    email = f"verify-{uuid.uuid4().hex[:8]}@example.com"
+    password = "Verify123!"
+    r = requests.post(f"{api}/api/v1/auth/register", json={"email": email, "password": password}, timeout=15)
+    if r.status_code == 201:
+        token = r.json()["access_token"]
+        ok &= check("register user", True, email)
+    else:
+        log(f"register returned {r.status_code}, trying login")
+        r = requests.post(f"{api}/api/v1/auth/login", json={"email": email, "password": password}, timeout=15)
+        if r.status_code != 200:
+            ok &= check("authenticate", False, f"HTTP {r.status_code}: {r.text[:200]}")
+            log("RESULT: FAIL (cannot authenticate)")
+            return 1
+        token = r.json()["access_token"]
+        ok &= check("login user", True, email)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 3. Upload synthetic invoice
+    log("Step 3/4: upload synthetic invoice")
+    img_path = "/tmp/verify_invoice.png"
+    render_invoice_png(img_path)
+    with open(img_path, "rb") as f:
+        r = requests.post(
+            f"{api}/api/v1/documents/upload",
+            files={"file": ("verify_invoice.png", f, "image/png")},
+            headers=headers,
+            timeout=60,
+        )
+    if r.status_code != 202:
+        ok &= check("upload", False, f"HTTP {r.status_code}: {r.text[:200]}")
+        log("RESULT: FAIL (upload rejected)")
+        return 1
+    document_id = r.json()["document_id"]
+    ok &= check("upload accepted", True, f"document_id={document_id}")
+
+    # 4. Poll to terminal status
+    log(f"Step 4/4: poll {document_id} until terminal {sorted(TERMINAL_STATUSES)}")
+    deadline = time.time() + args.timeout
+    final = None
+    while time.time() < deadline:
+        r = requests.get(f"{api}/api/v1/documents/{document_id}", headers=headers, timeout=15)
+        if r.status_code != 200:
+            log(f"  ... status poll HTTP {r.status_code}, retrying")
+            time.sleep(args.poll_interval)
+            continue
+        doc = r.json()
+        status = doc.get("status")
+        log(f"  ... status={status}")
+        if status in TERMINAL_STATUSES:
+            final = doc
+            break
+        time.sleep(args.poll_interval)
+
+    if final is None:
+        ok &= check("terminal status", False, f"no terminal status within {args.timeout}s")
+        log("RESULT: FAIL (pipeline stuck)")
+        return 1
+    ok &= check("terminal status", True, final["status"])
+    n_fields = len(final.get("extracted_fields") or [])
+    ok &= check("extracted fields produced", n_fields > 0, f"{n_fields} fields")
+
+    log("RESULT: PASS" if ok else "RESULT: FAIL")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

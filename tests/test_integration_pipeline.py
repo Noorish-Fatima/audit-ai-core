@@ -10,7 +10,7 @@ Full end-to-end pipeline tests require a real database and are run in CI.
 """
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import uuid
 
 
@@ -58,7 +58,6 @@ class TestPipelineRouting:
     def test_route_decision_clean_invoice_verified(self):
         """Test clean invoice routes to verified."""
         # This tests the logic in route_decision task
-        from worker.tasks.pipeline_tasks import route_decision
         
         # The actual test would require a real DB, but we verify the logic here
         # Clean invoice: high confidence, no violations, no fraud, no duplicates

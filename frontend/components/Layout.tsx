@@ -117,11 +117,7 @@ export function Sidebar() {
             <p className="text-xs text-slate-500 capitalize truncate">{user?.role}</p>
           </div>
           <button
-            onClick={() => {
-              const { logout } = useAuth();
-              logout();
-              window.location.href = '/login';
-            }}
+            onClick={handleLogout}
             className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
             aria-label="Log out"
             title="Log out"

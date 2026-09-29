@@ -1,10 +1,10 @@
-from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Tuple
+from datetime import datetime, timezone
+from typing import Optional, Tuple
 import logging
 from decimal import Decimal
 
 from celery import shared_task
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
 
 from app.tier_config.tiers import feature_enabled

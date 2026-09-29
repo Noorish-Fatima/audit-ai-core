@@ -8,8 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'api'))
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from decimal import Decimal
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 import uuid
 from enum import Enum
 
@@ -39,18 +38,11 @@ class RuleSeverity(str, Enum):
     critical = "critical"
 
 
-# Import the task functions after mocking
-with patch.dict('sys.modules', {
-    'app.tier_config.tiers': MagicMock(),
-    'app.db.session': MagicMock(),
-    'app.models.document': MagicMock(),
-    'app.models.vendor': MagicMock(),
-    'app.models.flag': MagicMock(),
-    'app.models.extracted_field': MagicMock(),
-    'app.models.rule': MagicMock(),
-    'app.models.audit_log': MagicMock(),
-}):
-    from worker.tasks.fraud_task import check_fraud_patterns, get_fraud_threshold, get_approval_thresholds
+# Import the real task (models stay real so SQLAlchemy select() works;
+# the DB session itself is faked per-test in run_fraud_task below).
+# No live services are touched: SyncSessionLocal, feature_enabled and
+# get_field_value are all patched out in the helper.
+from worker.tasks.fraud_task import check_fraud_patterns
 
 
 class MockSession:
@@ -207,38 +199,57 @@ def run_fraud_task(doc_id, vendor, doc, extracted_fields, bank_histories=None,
         return None
     
     def mock_execute(query):
+        # Dispatch on the real SQL text. With real SQLAlchemy models,
+        # str(query) is SQL like "SELECT ... FROM vendors WHERE ...", so
+        # match on table names rather than bound literal values (which
+        # appear only as :param placeholders, never as 'total_amount').
         query_str = str(query).lower()
         result = MockResult([])
-        
-        if 'vendor' in query_str and 'canonical_name' in query_str:
-            result = MockResult([vendor])
+
+        if 'fraud_flags' in query_str:
+            # _create_fraud_flag idempotency check: no pre-existing flags.
+            result = MockResult([])
+        elif 'document_sessions' in query_str:
+            sess_obj = session.query_results.get('document_session')
+            result = MockResult([sess_obj] if sess_obj else [])
         elif 'vendor_bank_history' in query_str:
             # Filter bank histories by date if invoice_date provided
             if bank_histories and invoice_date:
                 filtered = []
                 for bh in bank_histories:
                     # Check if bank history matches current vendor hash and is within 14 days before invoice
-                    if (bh.new_bank_account_hash == vendor.bank_account_hash and 
+                    if (bh.new_bank_account_hash == vendor.bank_account_hash and
                         bh.changed_at <= invoice_date and
                         bh.changed_at >= invoice_date - timedelta(days=14)):
                         filtered.append(bh)
                 result = MockResult(filtered)
             else:
                 result = MockResult(bank_histories or [])
-        elif 'extracted_fields' in query_str and 'vendor_name' in query_str and 'document_id !=' in query_str:
-            result = MockResult(prior_invoices or [])
-        elif 'extracted_fields' in query_str and 'total_amount' in query_str and 'created_at' in query_str:
-            result = MockResult(prior_docs or [])
-        elif 'rules' in query_str and 'active' in query_str:
+        elif 'vendors' in query_str and 'canonical_name' in query_str:
+            result = MockResult([vendor])
+        elif 'rules' in query_str:
             result = MockResult(rules or [])
-        elif 'fraud_flags' in query_str:
-            result = MockResult([])
+        elif 'extracted_fields' in query_str and 'created_at' in query_str:
+            # Round-number detector: SELECT document_id, field_value ...
+            # JOIN documents ... WHERE created_at >= .... The task does
+            # `.all()` then `for inv_doc_id, amount_str in rows`, so rows
+            # must be 2-tuples. Accept both tuples and MagicMock rows.
+            rows = []
+            for r in (prior_docs or []):
+                if isinstance(r, (tuple, list)):
+                    rows.append(tuple(r))
+                else:
+                    rows.append(
+                        (getattr(r, 'document_id', str(uuid.uuid4())),
+                         str(getattr(r, 'field_value', '0')))
+                    )
+            result = MockResult(rows)
+        elif 'extracted_fields' in query_str:
+            # New-vendor detector: SELECT document_id ... (scalars().all()).
+            result = MockResult(prior_invoices or [])
         elif 'duplicate_flags' in query_str:
             result = MockResult([])
-        elif 'document_sessions' in query_str:
-            sess_obj = session.query_results.get('document_session')
-            result = MockResult([sess_obj] if sess_obj else [])
-        
+
         return result
     
     session.get = mock_get

@@ -1,12 +1,11 @@
-import os
 import uuid
 import logging
 import numpy as np
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 from celery import shared_task
-from PIL import Image, ImageOps, ImageEnhance, ExifTags
+from PIL import Image, ImageEnhance
 import cv2
 import pytesseract
 import pypdfium2 as pdfium
@@ -232,10 +231,9 @@ def run_ocr(image: Image.Image) -> str:
 def _update_session_atomic(db: Session, document_id: str, stage: str, progress: int, message: str, document_status: DocumentStatus):
     """Atomically update session stage + document status in single transaction."""
 
-    from datetime import datetime
     from sqlalchemy import select
     from sqlalchemy.orm.attributes import flag_modified
-    from app.models.document import DocumentSession, Document
+    from app.models.document import Document
     
     # Get session
     result = db.execute(
@@ -275,9 +273,7 @@ def _update_session_atomic(db: Session, document_id: str, stage: str, progress: 
 def _update_progress(db: Session, document_id: str, stage: str, progress: int, message: str = ""):
     """Update document session progress (non-atomic, for intermediate updates)."""
 
-    from datetime import datetime
     from sqlalchemy import select
-    from app.models.document import DocumentSession
     
     result = db.execute(
         select(DocumentSession)
@@ -309,8 +305,6 @@ def flag_document(document_id: str, reason: str, error_msg: str):
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import select
     from app.models.document import Document
-    from app.models.audit_log import AuditLog
-    from datetime import datetime
     import uuid
     
     # Create a fresh session for this operation

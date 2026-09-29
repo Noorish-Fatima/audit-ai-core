@@ -1,8 +1,4 @@
-from typing import Any, Dict
-from decimal import Decimal
-import pytest
 from api.app.services.rules_engine import RuleEvaluator
-from unittest.mock import MagicMock
 
 class MockVendor:
     def __init__(self, **kwargs):
@@ -10,7 +6,6 @@ class MockVendor:
             setattr(self, k, v)
 
 def test_evaluator_basic_equals():
-    evaluator = RuleEvaluator()
     data = {"total_amount": "100.00", "invoice_number": "INV-1"}
     vendor = MockVendor(is_approved=True)
 
