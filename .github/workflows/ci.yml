@@ -14,6 +14,10 @@ jobs:
       GROQ_API_KEY: fake-ci-key
       GEMINI_API_KEY: fake-ci-key
       SECRET_KEY: fake-ci-secret-key-for-testing-0123456789
+      # Full feature surface: the default tier (basic) gates off nl_query,
+      # fraud_detection, etc., which would trip feature-gated code paths.
+      # TIER is a plan selector, not a secret.
+      TIER: premium
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

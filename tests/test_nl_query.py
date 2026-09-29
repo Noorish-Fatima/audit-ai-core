@@ -304,7 +304,12 @@ class TestUnsupportedQuestionHonesty:
     @pytest.mark.asyncio
     async def test_unsupported_question_returns_honest_answer(self):
         """Test that unsupported questions get honest 'cannot answer' response."""
-        with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session:
+        # feature_enabled is forced on: these tests cover query behavior, not
+        # tier gating, and must not depend on the ambient TIER env var
+        # (CI sets TIER=premium; a dev default of basic would gate nl_query
+        # off and short-circuit run_nl_query before any logic runs).
+        with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session, \
+             patch("app.agents.nl_query_graph.feature_enabled", return_value=True):
             # Sync session mock: add()/commit() are sync in production, so a
             # MagicMock (not AsyncMock) avoids "coroutine never awaited" noise.
             mock_session.return_value.__enter__.return_value = MagicMock()
@@ -318,7 +323,8 @@ class TestUnsupportedQuestionHonesty:
     @pytest.mark.asyncio
     async def test_unsupported_does_not_hallucinate(self):
         """Test that unsupported questions don't hallucinate fake data."""
-        with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session:
+        with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session, \
+             patch("app.agents.nl_query_graph.feature_enabled", return_value=True):
             mock_session.return_value.__enter__.return_value = MagicMock()
             
             result = await run_nl_query("Predict next quarter's revenue", str(uuid.uuid4()))
@@ -335,7 +341,8 @@ class TestNLQueryIntegration:
     async def test_vendor_spend_end_to_end(self):
         """Test full vendor spend query end-to-end."""
         # Test the full flow by mocking at the graph level - just verify intent and response
-        with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session:
+        with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session, \
+             patch("app.agents.nl_query_graph.feature_enabled", return_value=True):
             mock_db = MagicMock()
             mock_session.return_value.__enter__.return_value = mock_db
             
@@ -359,7 +366,8 @@ class TestNLQueryIntegration:
     @pytest.mark.asyncio
     async def test_unsupported_honest_answer(self):
         """Test unsupported question gets honest response."""
-        with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session:
+        with patch("app.agents.nl_query_graph.SyncSessionLocal") as mock_session, \
+             patch("app.agents.nl_query_graph.feature_enabled", return_value=True):
             mock_session.return_value.__enter__.return_value = MagicMock()
             
             result = await run_nl_query("What is the meaning of life?", str(uuid.uuid4()))
